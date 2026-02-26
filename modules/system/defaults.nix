@@ -22,6 +22,7 @@
       orientation = "bottom";       # macOS default: "bottom" — no change
       tilesize = 38;                # [non-default] macOS default: 48
       show-recents = true;          # macOS default: true — no change
+      expose-group-apps = true;     # [non-default] macOS default: false — recommended for AeroSpace
 
       mineffect = "genie";          # macOS default: "genie" — no change
       minimize-to-application = true; # [non-default] macOS default: false
@@ -107,7 +108,7 @@
     };
 
     # ── Spaces ────────────────────────────────────────────────────────────────
-    # spaces.spans-displays = false;  # each display has its own Space
+    spaces.spans-displays = false;  # each display has its own Space
 
     # ── Universal Access ──────────────────────────────────────────────────────
     # universalaccess = {
