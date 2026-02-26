@@ -66,9 +66,6 @@
         { "if".app-id = "com.hnc.Discord";                run = "move-node-to-workspace 4"; }
         { "if".app-id = "com.apple.Messages";             run = "move-node-to-workspace 4"; }
         { "if".app-id = "ru.keepcoder.Telegram";          run = "move-node-to-workspace 4"; }
-        # Mail / calendar → workspace 6 (previously unassigned, now explicit)
-        { "if".app-id = "com.apple.mail";                 run = "move-node-to-workspace 6"; }
-        { "if".app-id = "com.apple.iCal";                 run = "move-node-to-workspace 6"; }
         # Music / media → workspace 5
         { "if".app-id = "com.spotify.client";             run = "move-node-to-workspace 5"; }
         { "if".app-id = "com.apple.Music";                run = "move-node-to-workspace 5"; }
