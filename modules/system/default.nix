@@ -27,6 +27,13 @@
   # per-user zsh config to work correctly
   programs.zsh.enable = true;
 
+  # Declare the primary user so home-manager can resolve homeDirectory correctly.
+  # Without this, users.users.${username}.home is null and home-manager errors.
+  users.users.${username} = {
+    name = username;
+    home = "/Users/${username}";
+  };
+
   # Allow managing fonts through Nix — add font packages here or in packages.nix
   fonts.packages = with pkgs; [
     nerd-fonts.jetbrains-mono  # uncomment to manage JetBrains Mono via Nix
