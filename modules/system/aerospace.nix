@@ -14,8 +14,9 @@
     settings = {
 
       # ── Global behaviour ────────────────────────────────────────────────────
-      # Focus follows the mouse cursor — on by default in Hyprland.
-      focus-follows-mouse = "during-window-focus-jump-to-cursor";
+      # Move the mouse to the focused window on any focus change — replaces the
+      # removed top-level focus-follows-mouse key.
+      on-focus-changed = ["move-mouse window-lazy-center"];
 
       # Auto-alternate split direction on each new window — mimics Hyprland's
       # dwindle layout where splits rotate between horizontal and vertical.
