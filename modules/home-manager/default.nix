@@ -19,7 +19,7 @@
     gum          # shell scripting TUI components
 
     # Git toolchain
-    git-delta    # better diffs (wired into programs.git below)
+    # delta is managed by programs.delta below (no need to list it here)
     git-lfs      # large file storage
     lazygit      # TUI git client
 
@@ -78,24 +78,24 @@
     enable = true;
     # TODO: set your real name and email before first activation —
     # commits made with placeholder values will have wrong authorship.
-    userName = "Your Name";
-    userEmail = "your.email@example.com";
-
-    delta = {
-      enable = true;
-      options = {
-        navigate = true;
-        line-numbers = true;
-        side-by-side = false;
-      };
+    settings = {
+      user.name  = "Your Name";
+      user.email = "your.email@example.com";
+      # init.defaultBranch = "main";
+      # pull.rebase = true;
+      # push.autoSetupRemote = true;
+      # core.editor = "nvim";
     };
+  };
 
-    # extraConfig = {
-    #   init.defaultBranch = "main";
-    #   pull.rebase = true;
-    #   push.autoSetupRemote = true;
-    #   core.editor = "nvim";
-    # };
+  programs.delta = {
+    enable = true;
+    enableGitIntegration = true;
+    options = {
+      navigate = true;
+      line-numbers = true;
+      side-by-side = false;
+    };
   };
 
   # ── Home files ─────────────────────────────────────────────────────────────
