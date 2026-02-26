@@ -51,25 +51,18 @@
     # - Python tool management (pipx)
     # Everything else should go in home.packages.
     brews = [
-      "dnsmasq"      # local DNS resolver (runs as launchd service via brew services)
       "mas"          # Mac App Store CLI
-      "ollama"       # local LLM runner (requires Metal/GPU integration)
-      "pipx"         # install Python CLIs in isolated envs (cookiecutter, whisper, etc.)
-      "rustup"       # Rust version manager — owns its own toolchain, don't use nixpkgs rust
-      "podman"       # container runtime (macOS VM integration)
       "gemini-cli"   # not yet in nixpkgs
     ];
 
     # ── GUI applications (casks) ──────────────────────────────────────────────
     casks = [
       "alcove"
-      "arc"                    # browser
       "cleanshot"
       "discord"
       "firefox"
       "kitty"                  # terminal emulator
       "macwhisper"
-      "microsoft-auto-update"
       "microsoft-office"
       "microsoft-teams"
       "obsidian"
@@ -79,7 +72,6 @@
       "sublime-merge"
       "sublime-text"
       "tailscale-app"
-      "teamspeak-client"
       "thebrowsercompany-dia"
     ];
 
