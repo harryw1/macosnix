@@ -42,6 +42,7 @@
         float
         colortbl
         pdflscape
+        pdfcol
         tabu
         ltablex
         threeparttable
@@ -56,8 +57,11 @@
         tcolorbox
         fancyhdr
         titlesec
+        tocloft
         environ
         pgf
+        tikzfill
+        tabularray
         setspace
         caption
         mathspec # often used with xelatex

@@ -40,7 +40,7 @@ vim.api.nvim_create_autocmd("FileType", {
         "--pdf-engine=xelatex", 
         "--template=" .. template,
         "--variable", "geometry:margin=1in",
-        "--columns=120",
+        "--columns=80",
         "-o", output 
       }
       

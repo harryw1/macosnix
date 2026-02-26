@@ -134,6 +134,11 @@
       };
       "com.apple.symbolichotkeys" = {
         AppleSymbolicHotKeys = {
+          "28" = { enabled = false; }; # Save picture of screen as a file (Cmd + Shift + 3)
+          "29" = { enabled = false; }; # Copy picture of screen to the clipboard (Cmd + Shift + Ctrl + 3)
+          "30" = { enabled = false; }; # Save picture of selected area as a file (Cmd + Shift + 4)
+          "31" = { enabled = false; }; # Copy picture of selected area to the clipboard (Cmd + Shift + Ctrl + 4)
+          "184" = { enabled = false; }; # Screenshot and recording options (Cmd + Shift + 5)
           "64" = { enabled = false; }; # Spotlight search (Cmd + Space)
           "65" = { enabled = false; }; # Finder search window (Cmd + Opt + Space)
         };
