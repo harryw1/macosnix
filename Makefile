@@ -7,10 +7,21 @@
 HOST ?= aristotle
 NIX  := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: bootstrap switch build check update update-nixpkgs update-brew gc diff fmt help
+.PHONY: bootstrap check-rosetta switch build check update update-nixpkgs update-brew gc diff fmt help
 
-bootstrap: ## First-time activation (use before darwin-rebuild is on PATH)
+bootstrap: check-rosetta ## First-time activation (use before darwin-rebuild is on PATH)
 	sudo $(NIX) run nix-darwin -- switch --flake ".#$(HOST)"
+
+check-rosetta: ## Ensure Rosetta 2 is installed before setting up the Intel Homebrew prefix
+	@if [ "$$(uname -m)" = "arm64" ]; then \
+		if ! pkgutil --pkg-info=com.apple.pkg.RosettaUpdateAuto >/dev/null 2>&1; then \
+			echo "Rosetta 2 is not installed. Installing (required for Intel Homebrew prefix)..."; \
+			sudo softwareupdate --install-rosetta --agree-to-license || { \
+				echo "ERROR: Rosetta 2 installation failed. Run 'softwareupdate --install-rosetta' manually and retry."; \
+				exit 1; \
+			}; \
+		fi \
+	fi
 
 switch: ## Apply configuration (activates immediately)
 	sudo darwin-rebuild switch --flake ".#$(HOST)"

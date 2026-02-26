@@ -22,6 +22,13 @@
       url = "github:homebrew/homebrew-cask";
       flake = false;
     };
+
+    # Third-party taps — must be added here so nix-homebrew can manage them
+    # with mutableTaps = false.
+    homebrew-nikitabobko-tap = {
+      url = "github:nikitabobko/homebrew-tap";
+      flake = false;
+    };
   };
 
   outputs = inputs @ { self, nix-darwin, nixpkgs, home-manager, nix-homebrew, ... }:

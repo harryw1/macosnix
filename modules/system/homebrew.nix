@@ -25,6 +25,7 @@
     taps = {
       "homebrew/homebrew-core" = inputs.homebrew-core;
       "homebrew/homebrew-cask" = inputs.homebrew-cask;
+      "nikitabobko/homebrew-tap" = inputs.homebrew-nikitabobko-tap;
     };
     mutableTaps = false;   # taps are read-only; managed exclusively via flake inputs
   };
@@ -62,7 +63,7 @@
 
     # ── GUI applications (casks) ──────────────────────────────────────────────
     casks = [
-      "aerospace"              # tiling window manager
+      "nikitabobko/homebrew-tap/aerospace"  # tiling window manager (not in homebrew-cask)
       "alcove"
       "arc"                    # browser
       "cleanshot"
