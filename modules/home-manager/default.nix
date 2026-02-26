@@ -1,4 +1,4 @@
-{ config, pkgs, username, ... }:
+{ config, pkgs, username, flavor ? "frappe", ... }:
 
 {
   home.username = username;
@@ -8,6 +8,10 @@
   # Do NOT change this to an older value — it's a one-way migration marker.
   home.stateVersion = "24.11";
 
+  # ── Catppuccin Theme ────────────────────────────────────────────────────────
+  catppuccin.flavor = flavor;
+  catppuccin.enable = true;
+
   # ── User packages ──────────────────────────────────────────────────────────
   home.packages = with pkgs; [
     # Modern unix replacements
@@ -16,15 +20,13 @@
     fd           # fast find
     fzf          # fuzzy finder
     ripgrep      # fast grep (rg)
-    gum          # shell scripting TUI components
 
     # Git toolchain
-    # delta is managed by programs.delta below (no need to list it here)
     git-lfs      # large file storage
     lazygit      # TUI git client
 
     # Development
-    neovim       # text editor (see programs.neovim for declarative plugin mgmt)
+    neovim       # text editor
     gh           # GitHub CLI
     cmake
     duckdb
@@ -59,32 +61,49 @@
       lg  = "lazygit";
     };
 
+    plugins = [
+      {
+        name = "zsh-completions";
+        src = pkgs.zsh-completions;
+      }
+      {
+        name = "zsh-history-substring-search";
+        src = pkgs.zsh-history-substring-search;
+      }
+    ];
+
     initContent = ''
-      # Add any custom zsh initialization here
+      # Custom zsh initialization
+      bindkey '^[[A' history-substring-search-up
+      bindkey '^[[B' history-substring-search-down
     '';
   };
 
   # ── Starship prompt ────────────────────────────────────────────────────────
   programs.starship = {
     enable = true;
-    # settings = {
-    #   add_newline = false;
-    #   character = { success_symbol = "[›](bold green)"; };
-    # };
+    catppuccin.enable = true;
+    settings = {
+      format = "$all";
+      scan_timeout = 10;
+      add_newline = true;
+      character = {
+        success_symbol = "[➜](bold green)";
+        error_symbol = "[➜](bold red)";
+      };
+    };
   };
 
   # ── Git ────────────────────────────────────────────────────────────────────
   programs.git = {
     enable = true;
-    # TODO: set your real name and email before first activation —
-    # commits made with placeholder values will have wrong authorship.
     settings = {
       user.name  = "Harrison Weiss";
       user.email = "harrisonrweiss1@gmail.com";
-      # init.defaultBranch = "main";
-      # pull.rebase = true;
-      # push.autoSetupRemote = true;
-      # core.editor = "nvim";
+      init.defaultBranch = "main";
+      pull.rebase = true;
+      push.autoSetupRemote = true;
+      core.editor = "nvim";
     };
   };
 
@@ -98,10 +117,102 @@
     };
   };
 
+  # ── Modern CLI Tools ───────────────────────────────────────────────────────
+  programs.bat.enable = true;
+  programs.fzf.enable = true;
+  programs.eza = {
+    enable = true;
+    git = true;
+    icons = "auto";
+  };
+
+  programs.lazygit = {
+    enable = true;
+  };
+
+  programs.kitty = {
+    enable = true;
+    font = {
+      name = "JetBrainsMono Nerd Font";
+      size = 12;
+    };
+    settings = {
+      scrollback_lines = 10000;
+      enable_audio_bell = false;
+      update_check_interval = 0;
+      background_opacity = "0.8";
+      background_blur = 20;
+    };
+  };
+
   # ── Home files ─────────────────────────────────────────────────────────────
   home.file = {
-    # ".config/nvim".source = ./nvim;
-    # ".config/ghostty/config".source = ./ghostty/config;
+    ".config/nvim" = {
+      source = ./nvim;
+      recursive = true;
+    };
+    ".config/nvim/lua/plugins/colorscheme.lua".text = ''
+      return {
+        {
+          "catppuccin/nvim",
+          name = "catppuccin",
+          priority = 1000,
+          opts = {
+            flavour = "${flavor}",
+            transparent_background = true,
+            show_end_of_buffer = false, -- keep it clean
+            term_colors = true,
+            dim_inactive = {
+              enabled = false,
+            },
+            float = {
+              transparent = true,
+            },
+            integrations = {
+              aerial = true,
+              alpha = true,
+              cmp = true,
+              dashboard = true,
+              flash = true,
+              gitsigns = true,
+              headlines = true,
+              illuminate = true,
+              indent_blankline = { enabled = true },
+              leap = true,
+              lsp_trouble = true,
+              mason = true,
+              markdown = true,
+              mini = true,
+              native_lsp = {
+                enabled = true,
+                underlines = {
+                  errors = { "undercurl" },
+                  hints = { "undercurl" },
+                  warnings = { "undercurl" },
+                  information = { "undercurl" },
+                },
+              },
+              navic = { enabled = true, custom_bg = "NONE" },
+              neotest = true,
+              neotree = true,
+              noice = true,
+              notify = true,
+              semantic_tokens = true,
+              telescope = true,
+              treesitter = true,
+              treesitter_context = true,
+              which_key = true,
+            },
+          },
+        },
+        {
+          "LazyVim/LazyVim",
+          opts = {
+            colorscheme = "catppuccin-${flavor}",
+          },
+        },
+      }
+    '';
   };
 
   # ── Environment variables ──────────────────────────────────────────────────

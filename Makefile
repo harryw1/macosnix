@@ -5,9 +5,10 @@
 #   make switch HOST=other-machine
 
 HOST ?= aristotle
+FLAVOR ?= frappe
 NIX  := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: bootstrap check-rosetta check-clean switch build check update update-nixpkgs update-brew gc diff fmt help
+.PHONY: bootstrap check-rosetta check-clean switch build check update update-nixpkgs update-brew gc diff fmt help latte frappe
 
 bootstrap: check-rosetta ## First-time activation (use before darwin-rebuild is on PATH)
 	sudo $(NIX) run nix-darwin -- switch --flake ".#$(HOST)"
@@ -31,7 +32,13 @@ check-clean: ## Abort if there are uncommitted changes
 	fi
 
 switch: check-clean ## Apply configuration (activates immediately)
-	sudo darwin-rebuild switch --flake ".#$(HOST)"
+	FLAVOR=$(FLAVOR) sudo darwin-rebuild switch --flake ".#$(HOST)"
+
+latte: ## Switch to Catppuccin Latte (light mode)
+	$(MAKE) switch FLAVOR=latte
+
+frappe: ## Switch to Catppuccin Frappe (dark mode)
+	$(MAKE) switch FLAVOR=frappe
 
 build: ## Dry-run — evaluate and build without activating
 	darwin-rebuild build --flake ".#$(HOST)"

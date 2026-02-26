@@ -29,10 +29,13 @@
       url = "github:nikitabobko/homebrew-tap";
       flake = false;
     };
+
+    catppuccin.url = "github:catppuccin/nix";
   };
 
-  outputs = inputs @ { self, nix-darwin, nixpkgs, home-manager, nix-homebrew, ... }:
+  outputs = inputs @ { self, nix-darwin, nixpkgs, home-manager, nix-homebrew, catppuccin, ... }:
     let
+      flavor = let env = builtins.getEnv "FLAVOR"; in if env == "" then "frappe" else env;
       # Helper to define a Darwin system. Add more machines to darwinConfigurations
       # below by calling mkDarwinSystem with different hostname/username values.
       mkDarwinSystem =
@@ -44,16 +47,20 @@
           inherit system;
           # specialArgs threads hostname, username, and all flake inputs through
           # to every module so they never need to import from the flake root.
-          specialArgs = { inherit self inputs hostname username; };
+          specialArgs = { inherit self inputs hostname username flavor; };
           modules = [
             ./modules/system
             nix-homebrew.darwinModules.nix-homebrew
             home-manager.darwinModules.home-manager
+            catppuccin.darwinModules.catppuccin
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
               home-manager.users.${username} = import ./modules/home-manager;
-              home-manager.extraSpecialArgs = { inherit username; };
+              home-manager.extraSpecialArgs = { inherit username flavor; };
+              home-manager.sharedModules = [
+                catppuccin.homeManagerModules.catppuccin
+              ];
             }
           ];
         };
