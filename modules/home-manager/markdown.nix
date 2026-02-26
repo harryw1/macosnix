@@ -14,4 +14,15 @@
       }
     }
   '';
+
+  # Add standard .markdownlint.json for tools that prefer it
+  home.file.".markdownlint.json".text = ''
+    {
+      "default": true,
+      "MD013": false,
+      "MD025": false,
+      "MD033": false,
+      "MD051": false
+    }
+  '';
 }

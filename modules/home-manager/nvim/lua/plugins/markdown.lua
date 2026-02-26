@@ -7,6 +7,9 @@ return {
       -- Configure for Pandoc Grid Tables
       vim.g.table_mode_corner = "+"
       vim.g.table_mode_header_fillchar = "="
+      -- Move table mode prefix to <leader>mt (Markdown Table) 
+      -- so it doesn't conflict with <leader>t (Terminal)
+      vim.g.table_mode_map_prefix = "<leader>mt"
     end,
   },
 
