@@ -1,22 +1,22 @@
 # Nix Darwin — convenience targets
 # Usage: make <target>
 #
-# Override the flake target for a different machine:
-#   make switch FLAKE=.#other-machine
+# Override the host for a different machine:
+#   make switch HOST=other-machine
 
-FLAKE ?= .#aristotle
-NIX   := nix --extra-experimental-features 'nix-command flakes'
+HOST ?= aristotle
+NIX  := nix --extra-experimental-features 'nix-command flakes'
 
 .PHONY: bootstrap switch build check update update-nixpkgs update-brew gc diff fmt help
 
 bootstrap: ## First-time activation (use before darwin-rebuild is on PATH)
-	sudo $(NIX) run nix-darwin -- switch --flake $(FLAKE)
+	sudo $(NIX) run nix-darwin -- switch --flake ".#$(HOST)"
 
 switch: ## Apply configuration (activates immediately)
-	sudo darwin-rebuild switch --flake $(FLAKE)
+	sudo darwin-rebuild switch --flake ".#$(HOST)"
 
 build: ## Dry-run — evaluate and build without activating
-	darwin-rebuild build --flake $(FLAKE)
+	darwin-rebuild build --flake ".#$(HOST)"
 
 check: ## Check the flake evaluates without errors
 	$(NIX) flake check
