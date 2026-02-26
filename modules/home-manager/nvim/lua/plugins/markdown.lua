@@ -21,7 +21,7 @@ return {
       },
     },
     keys = {
-      { "<leader>mp", "<cmd>PasteImage<cr>", desc = "Paste image from clipboard" },
+      { "<leader>mp", "<cmd>PasteImage<cr>", desc = "󰏶 Paste image from clipboard" },
     },
   },
 
@@ -60,7 +60,17 @@ return {
       { "<leader>ud", function() 
           local enabled = vim.diagnostic.is_enabled()
           vim.diagnostic.enable(not enabled)
-        end, desc = "Toggle Diagnostics (UI)" },
+        end, desc = "󰒓 Toggle Diagnostics (UI)" },
+    },
+  },
+
+  -- Configure which-key to show a clean label for markdown group
+  {
+    "folke/which-key.nvim",
+    opts = {
+      spec = {
+        { "<leader>m", group = "markdown", icon = "󰽛 " },
+      },
     },
   },
 }
