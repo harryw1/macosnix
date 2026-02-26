@@ -20,9 +20,9 @@
     };
 
     shellAliases = {
-      ls  = "eza";
-      ll  = "eza -la";
-      la  = "eza -la --git";
+      ls  = "eza --icons --group-directories-first";
+      ll  = "eza --icons --group-directories-first -l";
+      la  = "eza --icons --group-directories-first --git -la";
       cat = "bat";
       lg  = "lazygit";
     };

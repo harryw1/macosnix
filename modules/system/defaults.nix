@@ -116,19 +116,27 @@
     #   reduceTransparency = true;
     # };
 
+    # ── Control Center ────────────────────────────────────────────────────────
+    controlcenter = {
+      BatteryShowPercentage = true;
+    };
+
     # ── Custom User Preferences (escape hatch for unexduced options) ──────────
     # Use CustomUserPreferences to set any `defaults` key that nix-darwin
     # doesn't expose natively. Keys here are written via `defaults write`.
-    # CustomUserPreferences = {
-    #   "com.apple.finder" = {
-    #     ShowExternalHardDrivesOnDesktop = false;
-    #     ShowRemovableMediaOnDesktop = false;
-    #   };
-    #   "com.apple.desktopservices" = {
-    #     DSDontWriteNetworkStores = true;
-    #     DSDontWriteUSBStores = true;
-    #   };
-    # };
+    CustomUserPreferences = {
+      "com.apple.Spotlight" = {
+        MenuItemHidden = 1;
+      };
+      # "com.apple.finder" = {
+      #   ShowExternalHardDrivesOnDesktop = false;
+      #   ShowRemovableMediaOnDesktop = false;
+      # };
+      # "com.apple.desktopservices" = {
+      #   DSDontWriteNetworkStores = true;
+      #   DSDontWriteUSBStores = true;
+      # };
+    };
   };
 
   # Apply new defaults without requiring a logout.
