@@ -1,4 +1,16 @@
 return {
+  -- Configure markdownlint-cli2 rules via nvim-lint
+  {
+    "mfussenegger/nvim-lint",
+    opts = function(_, opts)
+      opts.linters = opts.linters or {}
+      opts.linters["markdownlint-cli2"] = {
+        prepend_args = { "--config", vim.fn.stdpath("config") .. "/markdownlint.yaml" },
+      }
+      return opts
+    end,
+  },
+
   -- Add table mode for easier editing of markdown tables
   {
     "dhruvasagar/vim-table-mode",
