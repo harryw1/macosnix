@@ -39,6 +39,14 @@
       # ── Window rules (like Hyprland's windowrulev2) ────────────────────────
       # Automatically assign apps to workspaces on launch.
       on-window-detected = [
+        # ── Force every new window into tiling mode ────────────────────────
+        # macOS system apps (Mail, Messages, Calendar, etc.) and some third-
+        # party apps open as floating windows by default.  This catch-all rule
+        # (no "if" filter → matches every window) ensures they are all pulled
+        # into the tiling tree, which is the behaviour Hyprland exhibits
+        # unconditionally.
+        { run = "layout tiling"; }
+
         # Browsers → workspace 1
         { "if".app-id = "com.apple.Safari";               run = "move-node-to-workspace 1"; }
         { "if".app-id = "com.google.Chrome";              run = "move-node-to-workspace 1"; }
