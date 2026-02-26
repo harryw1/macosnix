@@ -7,7 +7,7 @@
 HOST ?= aristotle
 NIX  := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: bootstrap check-rosetta switch build check update update-nixpkgs update-brew gc diff fmt help
+.PHONY: bootstrap check-rosetta check-clean switch build check update update-nixpkgs update-brew gc diff fmt help
 
 bootstrap: check-rosetta ## First-time activation (use before darwin-rebuild is on PATH)
 	sudo $(NIX) run nix-darwin -- switch --flake ".#$(HOST)"
@@ -23,7 +23,14 @@ check-rosetta: ## Ensure Rosetta 2 is installed before setting up the Intel Home
 		fi \
 	fi
 
-switch: ## Apply configuration (activates immediately)
+check-clean: ## Abort if there are uncommitted changes
+	@if ! git diff --quiet || ! git diff --cached --quiet; then \
+		echo "ERROR: git tree is dirty. Commit or stash your changes first."; \
+		echo "  To apply anyway: make switch SKIP_CLEAN_CHECK=1"; \
+		[ "$(SKIP_CLEAN_CHECK)" = "1" ] || exit 1; \
+	fi
+
+switch: check-clean ## Apply configuration (activates immediately)
 	sudo darwin-rebuild switch --flake ".#$(HOST)"
 
 build: ## Dry-run — evaluate and build without activating
