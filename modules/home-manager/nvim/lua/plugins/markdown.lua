@@ -52,4 +52,15 @@ return {
       },
     },
   },
+
+  -- Add a keymap to toggle diagnostics (errors/warnings) off while writing
+  {
+    "LazyVim/LazyVim",
+    keys = {
+      { "<leader>ud", function() 
+          local enabled = vim.diagnostic.is_enabled()
+          vim.diagnostic.enable(not enabled)
+        end, desc = "Toggle Diagnostics (UI)" },
+    },
+  },
 }

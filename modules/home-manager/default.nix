@@ -9,6 +9,7 @@
     ./packages.nix
     ./starship
     ./zsh
+    ./markdown.nix
   ];
 
   home.username = username;
