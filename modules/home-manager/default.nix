@@ -1,6 +1,13 @@
 { config, pkgs, username, flavor ? "frappe", ... }:
 
 {
+  imports = [
+    ./git
+    ./kitty
+    ./starship
+    ./zsh
+  ];
+
   home.username = username;
   home.homeDirectory = "/Users/${username}";
 
@@ -41,81 +48,6 @@
     jq
   ];
 
-  # ── Zsh ────────────────────────────────────────────────────────────────────
-  programs.zsh = {
-    enable = true;
-    autosuggestion.enable = true;
-    syntaxHighlighting.enable = true;
-    enableCompletion = true;
-
-    history = {
-      size = 10000;
-      ignoreAllDups = true;
-    };
-
-    shellAliases = {
-      ls  = "eza";
-      ll  = "eza -la";
-      la  = "eza -la --git";
-      cat = "bat";
-      lg  = "lazygit";
-    };
-
-    plugins = [
-      {
-        name = "zsh-completions";
-        src = pkgs.zsh-completions;
-      }
-      {
-        name = "zsh-history-substring-search";
-        src = pkgs.zsh-history-substring-search;
-      }
-    ];
-
-    initContent = ''
-      # Custom zsh initialization
-      bindkey '^[[A' history-substring-search-up
-      bindkey '^[[B' history-substring-search-down
-    '';
-  };
-
-  # ── Starship prompt ────────────────────────────────────────────────────────
-  programs.starship = {
-    enable = true;
-    settings = {
-      format = "$all";
-      scan_timeout = 10;
-      add_newline = true;
-      character = {
-        success_symbol = "[➜](bold green)";
-        error_symbol = "[➜](bold red)";
-      };
-    };
-  };
-
-  # ── Git ────────────────────────────────────────────────────────────────────
-  programs.git = {
-    enable = true;
-    settings = {
-      user.name  = "Harrison Weiss";
-      user.email = "harrisonrweiss1@gmail.com";
-      init.defaultBranch = "main";
-      pull.rebase = true;
-      push.autoSetupRemote = true;
-      core.editor = "nvim";
-    };
-  };
-
-  programs.delta = {
-    enable = true;
-    enableGitIntegration = true;
-    options = {
-      navigate = true;
-      line-numbers = true;
-      side-by-side = false;
-    };
-  };
-
   # ── Modern CLI Tools ───────────────────────────────────────────────────────
   programs.bat.enable = true;
   programs.fzf.enable = true;
@@ -127,21 +59,6 @@
 
   programs.lazygit = {
     enable = true;
-  };
-
-  programs.kitty = {
-    enable = true;
-    font = {
-      name = "JetBrainsMono Nerd Font";
-      size = 12;
-    };
-    settings = {
-      scrollback_lines = 10000;
-      enable_audio_bell = false;
-      update_check_interval = 0;
-      background_opacity = "0.8";
-      background_blur = 20;
-    };
   };
 
   # ── Home files ─────────────────────────────────────────────────────────────
