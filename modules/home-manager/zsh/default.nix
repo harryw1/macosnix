@@ -60,6 +60,6 @@ in
       }
     ];
 
-    initExtra = builtins.readFile ./init.zsh;
+    initContent = builtins.readFile ./init.zsh;
   };
 }

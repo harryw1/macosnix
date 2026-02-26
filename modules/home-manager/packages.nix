@@ -23,6 +23,11 @@
     # Data / docs / monitoring
     imagemagick
     pandoc
+    marksman     # Markdown LSP
+    markdownlint-cli2 # Markdown linter
+    prettier     # Formatter
+    glow         # Markdown TUI previewer
+    typos        # Fast spellchecker
     nmap
     fastfetch
     btop
