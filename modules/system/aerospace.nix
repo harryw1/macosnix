@@ -26,9 +26,11 @@
       # Bring back apps that macOS silently hides after workspace switches.
       automatically-unhide-macos-hidden-apps = true;
 
+      # Disable tree flattening to allow for Hyprland-style binary tree (Dwindle).
+      enable-normalization-flatten-containers = false;
+
       # ── Gaps (Hyprland-style: tighter inner, wider outer) ──────────────────
       gaps = {
-        smart-gaps       = true;
         inner.horizontal = 6;
         inner.vertical   = 6;
         outer.left       = 12;
@@ -77,7 +79,7 @@
         # 2. Emulate Hyprland Dwindle: new windows split the focused node in
         # the opposite direction. This rule is at the bottom so it only runs
         # for windows that weren't moved away by the rules above.
-        { run = "join-with opposite"; }
+        { run = "split opposite"; }
       ];
 
       mode.main.binding = {
