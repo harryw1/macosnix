@@ -27,7 +27,7 @@
       inherit (texlive) 
         scheme-small
         geometry
-        calc
+        tools
         fontspec
         microtype
         xcolor
@@ -37,8 +37,6 @@
         enumitem
         graphics
         booktabs
-        longtable
-        array
         multirow
         wrapfig
         float
@@ -53,7 +51,7 @@
         etoolbox
         ragged2e
         amsfonts
-        amssymb
+        amsmath
         tcolorbox
         fancyhdr
         titlesec
