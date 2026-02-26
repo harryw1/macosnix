@@ -69,4 +69,13 @@ return {
       },
     },
   },
+
+  -- Add <leader>mv as a markdown-group alias for the browser preview
+  -- (LazyVim's markdown extra already sets <leader>cp for the same command)
+  {
+    "iamcco/markdown-preview.nvim",
+    keys = {
+      { "<leader>mv", "<cmd>MarkdownPreviewToggle<cr>", ft = "markdown", desc = " Toggle Preview" },
+    },
+  },
 }
