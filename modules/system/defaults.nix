@@ -128,6 +128,12 @@
       "com.apple.Spotlight" = {
         MenuItemHidden = 1;
       };
+      "com.apple.symbolichotkeys" = {
+        AppleSymbolicHotKeys = {
+          "64" = { enabled = false; }; # Spotlight search (Cmd + Space)
+          "65" = { enabled = false; }; # Finder search window (Cmd + Opt + Space)
+        };
+      };
       # "com.apple.finder" = {
       #   ShowExternalHardDrivesOnDesktop = false;
       #   ShowRemovableMediaOnDesktop = false;
