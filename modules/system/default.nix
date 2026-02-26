@@ -21,7 +21,11 @@
   };
 
   # Enable Touch ID for sudo authentication
-  security.pam.enableSudoTouchIdAuth = true;
+  security.pam.services.sudo_local.touchIdAuth = true;
+
+  # Required by nix-darwin for options that apply to a specific user
+  # (homebrew, system.defaults.*, etc.)
+  system.primaryUser = username;
 
   # nix-darwin needs zsh enabled at the system level for home-manager's
   # per-user zsh config to work correctly
