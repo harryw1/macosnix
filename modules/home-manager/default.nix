@@ -82,7 +82,6 @@
   # ── Starship prompt ────────────────────────────────────────────────────────
   programs.starship = {
     enable = true;
-    catppuccin.enable = true;
     settings = {
       format = "$all";
       scan_timeout = 10;

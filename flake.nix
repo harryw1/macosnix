@@ -58,7 +58,7 @@
               home-manager.users.${username} = import ./modules/home-manager;
               home-manager.extraSpecialArgs = { inherit username flavor; };
               home-manager.sharedModules = [
-                catppuccin.homeManagerModules.catppuccin
+                catppuccin.homeModules.catppuccin
               ];
             }
           ];
