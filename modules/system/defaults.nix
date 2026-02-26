@@ -35,7 +35,7 @@
     # ── Finder ────────────────────────────────────────────────────────────────
     finder = {
       AppleShowAllExtensions = false; # macOS default: false — no change
-      FXPreferredViewStyle = "clmv";  # [non-default] macOS default: "icnv" (icon view)
+      FXPreferredViewStyle = "Nlsv";  # [non-default] macOS default: "icnv" (icon view)
                                       # "clmv"=column, "Nlsv"=list, "Flwv"=gallery
       # AppleShowAllFiles = true;     # show hidden files (currently off on this system)
       # ShowStatusBar = true;
@@ -129,8 +129,8 @@
         MenuItemHidden = 1;
       };
       "com.apple.finder" = {
-        FXPreferredViewStyle = "clmv";
-        SearchRecentsSavedViewStyle = "clmv";
+        FXPreferredViewStyle = "Nlsv";
+        SearchRecentsSavedViewStyle = "Nlsv";
       };
       "com.apple.symbolichotkeys" = {
         AppleSymbolicHotKeys = {
