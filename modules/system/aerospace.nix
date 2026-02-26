@@ -18,8 +18,8 @@
       # removed top-level focus-follows-mouse key.
       on-focus-changed = ["move-mouse window-lazy-center"];
 
-      # Auto-alternate split direction on each new window — mimics Hyprland's
-      # dwindle layout where splits rotate between horizontal and vertical.
+      # Sets the initial orientation of the root container on a new workspace.
+      # "auto" defaults to horizontal on landscape, vertical on portrait.
       default-root-container-orientation = "auto";
       default-root-container-layout = "tiles";
 
@@ -28,6 +28,7 @@
 
       # ── Gaps (Hyprland-style: tighter inner, wider outer) ──────────────────
       gaps = {
+        smart-gaps       = true;
         inner.horizontal = 6;
         inner.vertical   = 6;
         outer.left       = 12;
@@ -39,14 +40,16 @@
       # ── Window rules (like Hyprland's windowrulev2) ────────────────────────
       # Automatically assign apps to workspaces on launch.
       on-window-detected = [
-        # ── Force every new window into tiling mode ────────────────────────
-        # macOS system apps (Mail, Messages, Calendar, etc.) and some third-
-        # party apps open as floating windows by default.  This catch-all rule
-        # (no "if" filter → matches every window) ensures they are all pulled
-        # into the tiling tree, which is the behaviour Hyprland exhibits
-        # unconditionally.
-        { run = "layout tiling"; }
+        # ── Global Defaults ──────────────────────────────────────────────────
+        # 1. Force every new window into tiling mode.
+        # CRITICAL: check-further-callbacks = true ensures the app-specific
+        # workspace rules below are actually checked.
+        {
+          run = "layout tiling";
+          check-further-callbacks = true;
+        }
 
+        # ── Workspace Assignments ───────────────────────────────────────────
         # Browsers → workspace 1
         { "if".app-id = "com.apple.Safari";               run = "move-node-to-workspace 1"; }
         { "if".app-id = "com.google.Chrome";              run = "move-node-to-workspace 1"; }
@@ -69,6 +72,12 @@
         # Music / media → workspace 5
         { "if".app-id = "com.spotify.client";             run = "move-node-to-workspace 5"; }
         { "if".app-id = "com.apple.Music";                run = "move-node-to-workspace 5"; }
+
+        # ── Dwindle (BSP) ────────────────────────────────────────────────────
+        # 2. Emulate Hyprland Dwindle: new windows split the focused node in
+        # the opposite direction. This rule is at the bottom so it only runs
+        # for windows that weren't moved away by the rules above.
+        { run = "join-with opposite"; }
       ];
 
       mode.main.binding = {
