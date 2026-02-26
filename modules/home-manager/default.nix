@@ -76,6 +76,8 @@
   # ── Git ────────────────────────────────────────────────────────────────────
   programs.git = {
     enable = true;
+    # TODO: set your real name and email before first activation —
+    # commits made with placeholder values will have wrong authorship.
     userName = "Your Name";
     userEmail = "your.email@example.com";
 

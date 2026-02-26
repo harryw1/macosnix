@@ -8,6 +8,9 @@
 # Some settings (e.g. Dock, keyboard) need a logout/restart to fully take
 # effect. To apply most without logging out, include the postUserActivation
 # snippet at the bottom.
+#
+# Settings that deviate from macOS factory defaults are marked [non-default].
+# Review these before first activation — enable only what you want from day one.
 # ─────────────────────────────────────────────────────────────────────────────
 
 {
@@ -15,24 +18,25 @@
 
     # ── Dock ──────────────────────────────────────────────────────────────────
     dock = {
-      autohide = true;
-      orientation = "bottom";
-      tilesize = 38;               # current system value
-      show-recents = true;        # don't show recent apps section
+      autohide = true;              # [non-default] macOS default: false
+      orientation = "bottom";       # macOS default: "bottom" — no change
+      tilesize = 38;                # [non-default] macOS default: 48
+      show-recents = true;          # macOS default: true — no change
 
-      mineffect = "genie";       # "genie" | "scale" | "suck"
-      minimize-to-application = true;
-      # mru-spaces = false;        # don't rearrange spaces by recent use
-      # launchanim = false;        # disable app launch animation
+      mineffect = "genie";          # macOS default: "genie" — no change
+      minimize-to-application = true; # [non-default] macOS default: false
+      # mru-spaces = false;         # don't rearrange spaces by recent use
+      # launchanim = false;         # disable app launch animation
       # expose-animation-duration = 0.1;
-      # scroll-to-open = true;     # scroll on app icon to show its windows
+      # scroll-to-open = true;      # scroll on app icon to show its windows
     };
 
     # ── Finder ────────────────────────────────────────────────────────────────
     finder = {
-      AppleShowAllExtensions = false;
-      FXPreferredViewStyle = "clmv";   # column view (Nlsv=list, icnv=icon, Flwv=gallery)
-      # AppleShowAllFiles = true;      # show hidden files (currently off on this system)
+      AppleShowAllExtensions = false; # macOS default: false — no change
+      FXPreferredViewStyle = "clmv";  # [non-default] macOS default: "icnv" (icon view)
+                                      # "clmv"=column, "Nlsv"=list, "Flwv"=gallery
+      # AppleShowAllFiles = true;     # show hidden files (currently off on this system)
       # ShowStatusBar = true;
       # ShowPathbar = true;
       # FXEnableExtensionChangeWarning = false;
@@ -44,22 +48,23 @@
     # ── NSGlobalDomain ────────────────────────────────────────────────────────
     # (system-wide preferences)
     NSGlobalDomain = {
-      # Key repeat — current system values (fast repeat, short initial delay)
-      InitialKeyRepeat = 15;   # 15 = ~225ms before repeat starts (25 is default)
-      KeyRepeat = 2;           # 2 = ~30ms between repeats (6 is default)
-      ApplePressAndHoldEnabled = false;   # allow key repeat instead of accent picker
+      # Key repeat — [non-default] macOS defaults: InitialKeyRepeat=25, KeyRepeat=6
+      InitialKeyRepeat = 15;   # 15 = ~225ms before repeat starts
+      KeyRepeat = 2;           # 2 = ~30ms between repeats (very fast — tune to taste)
+      ApplePressAndHoldEnabled = false;   # [non-default] macOS default: true
+                                          # false = key repeat; true = accent picker popup
 
-      # Automatic text corrections — current system has most of these disabled
+      # Automatic text corrections — [non-default] macOS defaults: all true
       NSAutomaticCapitalizationEnabled = false;
       NSAutomaticDashSubstitutionEnabled = false;
       NSAutomaticQuoteSubstitutionEnabled = false;
       NSAutomaticSpellingCorrectionEnabled = false;
-      # NSAutomaticPeriodSubstitutionEnabled = false;   # currently ON on this system
+      # NSAutomaticPeriodSubstitutionEnabled = false;   # macOS default: true
 
-      AppleInterfaceStyle = "Dark";       # dark mode — currently active, but
-                                          # managing this via Nix means switching
-                                          # modes always needs a rebuild. Leave
-                                          # unset to control through System Settings.
+      # Dark mode — leave unset here; control it through System Settings instead.
+      # Managing this via Nix means switching light/dark always needs a rebuild.
+      # Uncomment only if you want to permanently lock to dark mode:
+      # AppleInterfaceStyle = "Dark";   # [non-default] macOS default: unset (Light)
 
       # AppleShowAllExtensions = true;    # also settable here (same as finder above)
       # NSNavPanelExpandedStateForSaveMode = true;
@@ -73,27 +78,27 @@
     # ── Screencapture ─────────────────────────────────────────────────────────
     screencapture = {
       # location = "/Users/harryweiss/Screenshots";  # custom save location
-      type = "png";
-      # disable-shadow = true;   # no drop shadow on window screenshots
+      type = "png";               # macOS default: "png" — no change
+      # disable-shadow = true;    # no drop shadow on window screenshots
     };
 
     # ── Trackpad ──────────────────────────────────────────────────────────────
     trackpad = {
-      Clicking = true;                  # tap-to-click (currently enabled on this system)
-      TrackpadThreeFingerDrag = false;  # use three-finger swipe for Mission Control instead
+      Clicking = true;                  # [non-default] macOS default: false (tap-to-click off)
+      TrackpadThreeFingerDrag = false;  # macOS default: false — no change
       # TrackpadRightClick = true;      # two-finger right-click (enabled by default)
     };
 
     # ── Login Window ──────────────────────────────────────────────────────────
     loginwindow = {
-      GuestEnabled = false;
+      GuestEnabled = false;         # macOS default: false — no change
       # DisableConsoleAccess = true;
       # LoginwindowText = "Property of Harry Weiss";
     };
 
     # ── Software Update ───────────────────────────────────────────────────────
     SoftwareUpdate = {
-      AutomaticallyInstallMacOSUpdates = false;
+      AutomaticallyInstallMacOSUpdates = false; # [non-default] macOS default: true
     };
 
     # ── Spaces ────────────────────────────────────────────────────────────────
