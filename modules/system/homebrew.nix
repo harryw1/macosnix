@@ -58,6 +58,7 @@
     # ── GUI applications (casks) ──────────────────────────────────────────────
     casks = [
       "alcove"
+      "claude"
       "cleanshot"
       "clop"
       "discord"
