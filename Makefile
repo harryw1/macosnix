@@ -10,10 +10,10 @@ NIX   := nix --extra-experimental-features 'nix-command flakes'
 .PHONY: bootstrap switch build check update update-nixpkgs update-brew gc diff fmt help
 
 bootstrap: ## First-time activation (use before darwin-rebuild is on PATH)
-	$(NIX) run nix-darwin -- switch --flake $(FLAKE)
+	sudo $(NIX) run nix-darwin -- switch --flake $(FLAKE)
 
 switch: ## Apply configuration (activates immediately)
-	darwin-rebuild switch --flake $(FLAKE)
+	sudo darwin-rebuild switch --flake $(FLAKE)
 
 build: ## Dry-run — evaluate and build without activating
 	darwin-rebuild build --flake $(FLAKE)
