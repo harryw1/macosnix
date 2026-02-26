@@ -7,10 +7,13 @@ return {
       -- Configure for Pandoc Grid Tables
       vim.g.table_mode_corner = "+"
       vim.g.table_mode_header_fillchar = "="
-      -- Move table mode prefix to <leader>mt (Markdown Table) 
-      -- so it doesn't conflict with <leader>t (Terminal)
-      vim.g.table_mode_map_prefix = "<leader>mt"
+      -- Disable default mappings to prevent messy which-key display
+      vim.g.table_mode_disable_mappings = 1
     end,
+    keys = {
+      { "<leader>mt", "<cmd>TableModeToggle<cr>", desc = "Toggle Table Mode" },
+      { "<leader>mre", "<cmd>TableModeRealign<cr>", desc = "Realign Table" },
+    },
   },
 
   -- Add image pasting capability
