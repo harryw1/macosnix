@@ -52,7 +52,6 @@
             ./modules/system
             nix-homebrew.darwinModules.nix-homebrew
             home-manager.darwinModules.home-manager
-            catppuccin.darwinModules.catppuccin
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
