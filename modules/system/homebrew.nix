@@ -68,6 +68,7 @@
       "microsoft-office"
       "microsoft-teams"
       "obsidian"
+      "pandoc"
       "pixelsnap"
       "raycast"
       "steam"
