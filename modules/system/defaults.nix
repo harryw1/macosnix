@@ -1,4 +1,4 @@
-{ ... }:
+{ username, ... }:
 
 # ─── macOS system.defaults ────────────────────────────────────────────────────
 # Active settings below reflect sensible defaults (informed by the current
@@ -126,8 +126,9 @@
   };
 
   # Apply new defaults without requiring a logout.
-  # Activates after every `darwin-rebuild switch`.
-  system.activationScripts.postUserActivation.text = ''
-    /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
+  # Runs as root after every `darwin-rebuild switch`; sudo -u runs activateSettings
+  # as the primary user so macOS picks up the per-user defaults immediately.
+  system.activationScripts.postActivation.text = ''
+    sudo -u ${username} /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
   '';
 }
