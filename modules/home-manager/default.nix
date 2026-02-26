@@ -79,8 +79,8 @@
     # TODO: set your real name and email before first activation —
     # commits made with placeholder values will have wrong authorship.
     settings = {
-      user.name  = "Your Name";
-      user.email = "your.email@example.com";
+      user.name  = "Harrison Weiss";
+      user.email = "harrisonrweiss1@gmail.com";
       # init.defaultBranch = "main";
       # pull.rebase = true;
       # push.autoSetupRemote = true;
