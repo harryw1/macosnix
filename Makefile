@@ -7,7 +7,10 @@
 FLAKE ?= .#aristotle
 NIX   := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: switch build check update update-nixpkgs update-brew gc diff fmt help
+.PHONY: bootstrap switch build check update update-nixpkgs update-brew gc diff fmt help
+
+bootstrap: ## First-time activation (use before darwin-rebuild is on PATH)
+	$(NIX) run nix-darwin -- switch --flake $(FLAKE)
 
 switch: ## Apply configuration (activates immediately)
 	darwin-rebuild switch --flake $(FLAKE)
