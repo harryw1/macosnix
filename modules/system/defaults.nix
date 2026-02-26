@@ -128,6 +128,10 @@
       "com.apple.Spotlight" = {
         MenuItemHidden = 1;
       };
+      "com.apple.finder" = {
+        FXPreferredViewStyle = "clmv";
+        SearchRecentsSavedViewStyle = "clmv";
+      };
       "com.apple.symbolichotkeys" = {
         AppleSymbolicHotKeys = {
           "64" = { enabled = false; }; # Spotlight search (Cmd + Space)
@@ -150,5 +154,6 @@
   # as the primary user so macOS picks up the per-user defaults immediately.
   system.activationScripts.postActivation.text = ''
     sudo -u ${username} /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
+    killall Finder
   '';
 }
