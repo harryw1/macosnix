@@ -31,13 +31,40 @@ vim.api.nvim_create_autocmd("FileType", {
     map("n", "<leader>mep", function()
       local file = vim.fn.expand("%:p")
       local output = vim.fn.expand("%:p:r") .. ".pdf"
-      vim.notify(" Exporting to PDF…", vim.log.levels.INFO)
-      vim.fn.jobstart({ "pandoc", file, "-o", output }, {
+      local template = "/Users/harryweiss/Documents/LaTeX Templates/professional-report.tex"
+      local stderr = {}
+      vim.notify("󰈦 Exporting to PDF (with professional-report template)…", vim.log.levels.INFO)
+      
+      local cmd = { 
+        "pandoc", file, 
+        "--pdf-engine=xelatex", 
+        "--template=" .. template,
+        "--variable", "geometry:margin=1in",
+        "--columns=120",
+        "-o", output 
+      }
+      
+      vim.fn.jobstart(cmd, {
+        on_stderr = function(_, data)
+          if data then
+            for _, line in ipairs(data) do
+              if line ~= "" then
+                table.insert(stderr, line)
+              end
+            end
+          end
+        end,
         on_exit = function(_, code)
           if code == 0 then
-            vim.notify(" PDF exported → " .. output, vim.log.levels.INFO)
+            vim.notify("󰈦 PDF exported → " .. output, vim.log.levels.INFO)
           else
-            vim.notify("PDF export failed (is pandoc installed?)", vim.log.levels.ERROR)
+            local error_msg = "PDF export failed"
+            if #stderr > 0 then
+              error_msg = error_msg .. ": " .. table.concat(stderr, "\n")
+            else
+              error_msg = error_msg .. " (is pandoc/xelatex installed?)"
+            end
+            vim.notify(error_msg, vim.log.levels.ERROR)
           end
         end,
       })
@@ -47,16 +74,32 @@ vim.api.nvim_create_autocmd("FileType", {
     map("n", "<leader>mew", function()
       local file = vim.fn.expand("%:p")
       local output = vim.fn.expand("%:p:r") .. ".docx"
+      local stderr = {}
       vim.notify("󰈙 Exporting to Word…", vim.log.levels.INFO)
       vim.fn.jobstart({ "pandoc", file, "-o", output }, {
+        on_stderr = function(_, data)
+          if data then
+            for _, line in ipairs(data) do
+              if line ~= "" then
+                table.insert(stderr, line)
+              end
+            end
+          end
+        end,
         on_exit = function(_, code)
           if code == 0 then
             vim.notify("󰈙 Word doc exported → " .. output, vim.log.levels.INFO)
           else
-            vim.notify("Word export failed (is pandoc installed?)", vim.log.levels.ERROR)
+            local error_msg = "Word export failed"
+            if #stderr > 0 then
+              error_msg = error_msg .. ": " .. table.concat(stderr, "\n")
+            else
+              error_msg = error_msg .. " (is pandoc installed?)"
+            end
+            vim.notify(error_msg, vim.log.levels.ERROR)
           end
         end,
       })
     end, vim.tbl_extend("force", opts, { desc = "Export to Word (.docx)" }))
-  end,
+  },
 })
