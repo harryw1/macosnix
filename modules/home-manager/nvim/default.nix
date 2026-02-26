@@ -35,7 +35,7 @@
               illuminate = true,
               indent_blankline = { enabled = true },
               leap = true,
-              lsp_trouble = true,
+              trouble = true,
               mason = true,
               markdown = true,
               mini = true,
@@ -64,7 +64,7 @@
         {
           "LazyVim/LazyVim",
           opts = {
-            colorscheme = "catppuccin-${flavor}",
+            colorscheme = "catppuccin",
           },
         },
       }

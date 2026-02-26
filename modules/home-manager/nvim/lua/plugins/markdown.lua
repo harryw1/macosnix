@@ -43,33 +43,11 @@ return {
   {
     "MeanderingProgrammer/render-markdown.nvim",
     opts = {
-      file_types = { "markdown" },
       -- Enable rendering for wide tables
       heading = {
         enabled = true,
         sign = true,
         icons = { "󰲡 ", "󰲣 ", "󰲥 ", "󰲧 ", "󰲩 ", "󰲫 " },
-      },
-    },
-  },
-
-  -- Add a keymap to toggle diagnostics (errors/warnings) off while writing
-  {
-    "LazyVim/LazyVim",
-    keys = {
-      { "<leader>ud", function() 
-          local enabled = vim.diagnostic.is_enabled()
-          vim.diagnostic.enable(not enabled)
-        end, desc = "󰒓 Toggle Diagnostics (UI)" },
-    },
-  },
-
-  -- Configure which-key to show a clean label for markdown group
-  {
-    "folke/which-key.nvim",
-    opts = {
-      spec = {
-        { "<leader>m", group = "markdown", icon = "󰽛 " },
       },
     },
   },
