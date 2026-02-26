@@ -1,0 +1,21 @@
+# Nix
+result
+result-*
+.dirlocal
+.envrc
+.cache/
+
+# macOS
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+
+# IDE
+.idea/
+*.iml
+
+# Environment
+.env
+.env.local
