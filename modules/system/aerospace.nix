@@ -57,7 +57,7 @@
 
       mode.service.binding = {
         esc = [ "reload-config" "mode main" ];
-        r   = [ "flatten-container-tree" "mode main" ]; # reset layout
+        r   = [ "flatten-workspace-tree" "mode main" ]; # reset layout
         f   = [ "layout floating tiling" "mode main" ]; # toggle floating
         backspace = [ "close-all-windows-but-current" "mode main" ];
 
