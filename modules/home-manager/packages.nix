@@ -43,6 +43,7 @@
         colortbl
         pdflscape
         tabu
+        ltablex
         threeparttable
         threeparttablex
         ulem
@@ -57,6 +58,8 @@
         titlesec
         environ
         pgf
+        setspace
+        caption
         mathspec # often used with xelatex
         ;
     })
