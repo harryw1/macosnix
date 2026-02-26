@@ -154,6 +154,5 @@
   # as the primary user so macOS picks up the per-user defaults immediately.
   system.activationScripts.postActivation.text = ''
     sudo -u ${username} /System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
-    killall Finder
   '';
 }

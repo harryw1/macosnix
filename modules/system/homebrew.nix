@@ -59,6 +59,7 @@
     casks = [
       "alcove"
       "cleanshot"
+      "clop"
       "discord"
       "firefox"
       "kitty"                  # terminal emulator
