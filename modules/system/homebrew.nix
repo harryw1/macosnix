@@ -67,7 +67,7 @@
       "cleanshot"
       "discord"
       "firefox"
-      "ice"                    # menu bar manager
+      "jordanbaird-ice"        # menu bar manager
       "kitty"                  # terminal emulator
       "macwhisper"
       "microsoft-auto-update"
