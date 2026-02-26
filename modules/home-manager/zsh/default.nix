@@ -41,6 +41,13 @@ in
       vi   = "nvim";
       vim  = "nvim";
       grep = "rg";
+
+      # Markdown conversion (Pandoc)
+      # md2pdf file.md -> file.pdf using professional-report.tex
+      md2pdf = "pandoc --pdf-engine=xelatex --template='/Users/harryweiss/Documents/LaTeX Templates/professional-report.tex' --variable geometry:margin=1in --columns=120 -o";
+      
+      # md2docx file.md -> file.docx
+      md2docx = "pandoc --columns=120 -o";
     };
 
     plugins = [

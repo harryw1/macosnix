@@ -3,6 +3,11 @@ return {
   {
     "dhruvasagar/vim-table-mode",
     event = "VeryLazy",
+    init = function()
+      -- Configure for Pandoc Grid Tables
+      vim.g.table_mode_corner = "+"
+      vim.g.table_mode_header_fillchar = "="
+    end,
   },
 
   -- Add image pasting capability
