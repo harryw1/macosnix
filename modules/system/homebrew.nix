@@ -62,7 +62,6 @@
 
     # ── GUI applications (casks) ──────────────────────────────────────────────
     casks = [
-      "nikitabobko/homebrew-tap/aerospace"  # tiling window manager (not in homebrew-cask)
       "alcove"
       "arc"                    # browser
       "cleanshot"

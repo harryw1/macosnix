@@ -101,6 +101,11 @@
       AutomaticallyInstallMacOSUpdates = false; # [non-default] macOS default: true
     };
 
+    # ── Window Manager (Sequoia+) ─────────────────────────────────────────────
+    WindowManager = {
+      EnableTiledWindowMargins = true; # [macOS 15+] true = gaps around tiled windows
+    };
+
     # ── Spaces ────────────────────────────────────────────────────────────────
     # spaces.spans-displays = false;  # each display has its own Space
 

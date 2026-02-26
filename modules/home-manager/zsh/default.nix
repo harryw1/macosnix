@@ -13,6 +13,12 @@
       ignoreAllDups = true;
     };
 
+    historySubstringSearch = {
+      enable = true;
+      searchUpKey = [ "^[[A" ];
+      searchDownKey = [ "^[[B" ];
+    };
+
     shellAliases = {
       ls  = "eza";
       ll  = "eza -la";
@@ -26,16 +32,10 @@
         name = "zsh-completions";
         src = pkgs.zsh-completions;
       }
-      {
-        name = "zsh-history-substring-search";
-        src = pkgs.zsh-history-substring-search;
-      }
     ];
 
     initContent = ''
       # Custom zsh initialization
-      bindkey '^[[A' history-substring-search-up
-      bindkey '^[[B' history-substring-search-down
     '';
   };
 }
