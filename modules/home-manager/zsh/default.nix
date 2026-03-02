@@ -41,6 +41,7 @@ in
       vi   = "nvim";
       vim  = "nvim";
       grep = "rg";
+      cd   = "z";
 
       # Markdown conversion (Pandoc)
       # md2pdf file.md -> file.pdf using professional-report.tex
