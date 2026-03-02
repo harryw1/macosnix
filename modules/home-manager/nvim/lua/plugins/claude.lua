@@ -22,7 +22,7 @@ return {
     })
   end,
   keys = {
-    { "<leader>ac", "<cmd>ClaudeCode<cr>", desc = "Toggle Claude Code", icon = "󱙺" },
-    { "<leader>aR", "<cmd>ClaudeCodeResume<cr>", desc = "Resume Claude conversation", icon = "󰄉" },
+    { "<leader>ac", "<cmd>ClaudeCode<cr>", desc = "Toggle Claude Code" },
+    { "<leader>aR", "<cmd>ClaudeCodeResume<cr>", desc = "Resume Claude conversation" },
   },
 }
