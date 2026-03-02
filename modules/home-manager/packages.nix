@@ -9,6 +9,7 @@
     fd           # fast find
     fzf          # fuzzy finder
     ripgrep      # fast grep (rg)
+    gum          # Tool for glamorous shell scripts
 
     # Git toolchain
     git-lfs      # large file storage
@@ -19,6 +20,8 @@
     gh           # GitHub CLI
     cmake
     duckdb
+    uv           # Modern Python toolchain manager
+    marimo       # Reactive Python notebooks
 
     # Data / docs / monitoring
     imagemagick

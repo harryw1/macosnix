@@ -52,7 +52,6 @@
     # Everything else should go in home.packages.
     brews = [
       "mas"          # Mac App Store CLI
-      "pandoc"
       "gemini-cli"   # not yet in nixpkgs
     ];
 

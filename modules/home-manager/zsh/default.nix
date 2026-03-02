@@ -43,8 +43,18 @@ in
       grep = "rg";
       cd   = "z";
 
-      # Markdown conversion (Pandoc)
-      # md2pdf file.md -> file.pdf using professional-report.tex
+      # ── Python & Astral Toolchain ──────────────────────────────────────────
+      py    = "python";
+      uvp   = "uv python";
+      uvr   = "uv run";
+      uvx   = "uvx";
+      rff   = "ruff format";
+      rfc   = "ruff check --fix";
+      ty    = "uvx pyright";  # Astral-style type checking interface
+      nb    = "marimo edit";  # Start marimo notebook editor
+      pyinit = "pyinit";      # Calls our robust scaffolding script
+      
+      # ── Markdown conversion (Pandoc) ───────────────────────────────────────
       md2pdf = "pandoc --pdf-engine=xelatex --template='/Users/harryweiss/Documents/LaTeX Templates/professional-report.tex' --variable geometry:margin=1in --columns=80 -o";
       
       # md2docx file.md -> file.docx

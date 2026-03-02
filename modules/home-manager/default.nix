@@ -7,6 +7,7 @@
     ./kitty
     ./nvim
     ./packages.nix
+    ./scripts.nix
     ./starship
     ./zsh
     ./markdown.nix
