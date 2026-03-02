@@ -21,6 +21,8 @@
     cmake
     duckdb
     uv           # Modern Python toolchain manager
+    just         # Task runner (project-level Makefile alternative)
+    watchexec    # File watcher for re-running commands on change
 
     # Data / docs / monitoring
     imagemagick

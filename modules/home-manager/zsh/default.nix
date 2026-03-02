@@ -52,7 +52,9 @@ in
       rfc   = "ruff check --fix";
       ty    = "uvx pyright";  # Astral-style type checking interface
       nb    = "uvx marimo edit";  # Start marimo notebook editor (via uvx)
+      ipy   = "uvx ipython";  # Enhanced interactive Python REPL (via uvx)
       pyinit = "pyinit";      # Calls our robust scaffolding script
+      wt    = "watchexec";    # Watch files and re-run commands on change
       
       # ── Markdown conversion (Pandoc) ───────────────────────────────────────
       md2pdf = "pandoc --pdf-engine=xelatex --template='/Users/harryweiss/Documents/LaTeX Templates/professional-report.tex' --variable geometry:margin=1in --columns=80 -o";
