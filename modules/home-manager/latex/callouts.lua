@@ -86,7 +86,7 @@ function Pandoc(doc)
 
   local first = doc.blocks[1]
   if first.t == "Header" and first.level == 1 then
-    doc.blocks = doc.blocks:slice(2)
+    doc.blocks = pandoc.Blocks(pandoc.List(doc.blocks):slice(2))
     return doc
   end
 end
