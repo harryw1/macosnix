@@ -59,7 +59,6 @@
         cleveref
         bookmark
         caption
-        subcaption
         amsfonts
         amsmath
         tcolorbox
