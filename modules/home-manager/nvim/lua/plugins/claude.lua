@@ -6,12 +6,23 @@ return {
   config = function()
     require("claude-code").setup({
       window = {
-        position = "right",
-        size = 0.4,
+        position = "vertical",
+        split_ratio = 0.4,
+        enter_insert = true,
+        hide_numbers = true,
+        hide_signcolumn = true,
+      },
+      git = {
+        use_git_root = true,
+      },
+      file_refresh = {
+        enable = true,
+        show_notifications = true,
       },
     })
   end,
   keys = {
-    { "<leader>ac", "<cmd>ClaudeCodeToggle<cr>", desc = "Toggle Claude Code" },
+    { "<leader>ac", "<cmd>ClaudeCode<cr>", desc = "Toggle Claude Code" },
+    { "<leader>aR", "<cmd>ClaudeCodeResume<cr>", desc = "Resume Claude conversation" },
   },
 }
