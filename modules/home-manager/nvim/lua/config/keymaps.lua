@@ -4,10 +4,10 @@
 
 local map = vim.keymap.set
 
--- Diagnostic Toggle (from markdown.lua)
-map("n", "<leader>ud", function() LazyVim.toggle.diagnostics() end, { desc = "󰒓 Toggle Diagnostics (UI)" })
+-- Diagnostic Toggle
+map("n", "<leader>ud", function() LazyVim.toggle.diagnostics() end, { desc = "Toggle Diagnostics", icon = "󰒓" })
 
 -- Terminal
-map("n", "<leader>tt", function() LazyVim.terminal.open() end, { desc = "Terminal (root dir)" })
-map("n", "<leader>tT", function() LazyVim.terminal.open(nil, { cwd = vim.uv.cwd() }) end, { desc = "Terminal (cwd)" })
-map("n", "<leader>tf", function() LazyVim.terminal.open(nil, { border = "rounded" }) end, { desc = "Floating Terminal" })
+map("n", "<leader>tt", function() LazyVim.terminal.open() end, { desc = "Terminal (root dir)", icon = "󰞷" })
+map("n", "<leader>tT", function() LazyVim.terminal.open(nil, { cwd = vim.uv.cwd() }) end, { desc = "Terminal (cwd)", icon = "󰞷" })
+map("n", "<leader>tf", function() LazyVim.terminal.open(nil, { border = "rounded" }) end, { desc = "Floating Terminal", icon = "󱂬" })
