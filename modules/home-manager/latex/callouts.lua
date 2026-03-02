@@ -86,7 +86,7 @@ function Pandoc(doc)
 
   local first = doc.blocks[1]
   if first.t == "Header" and first.level == 1 then
-    doc.blocks = pandoc.Blocks(pandoc.List(doc.blocks):slice(2))
+    table.remove(doc.blocks, 1)
     return doc
   end
 end
