@@ -8,8 +8,8 @@
   # All templates are XeLaTeX + pandoc-variable aware.  Edit the .tex files in
   # this directory and run `darwin-rebuild switch` to update.
 
-  home.file.".pandoc/templates/professional-report.tex".source = ./professional-report.tex;
-  home.file.".pandoc/templates/meeting-notes.tex".source       = ./meeting-notes.tex;
+  home.file.".pandoc/templates/professional-report.latex".source = ./professional-report.tex;
+  home.file.".pandoc/templates/meeting-notes.latex".source       = ./meeting-notes.tex;
 
   # preamble.tex is also deployed for manual \input use in ad-hoc documents
   home.file.".pandoc/templates/preamble.tex".source = ./preamble.tex;
