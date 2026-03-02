@@ -49,6 +49,8 @@
     # ── NSGlobalDomain ────────────────────────────────────────────────────────
     # (system-wide preferences)
     NSGlobalDomain = {
+      "com.apple.swipescrolldirection" = false; # [non-default] macOS default: true (natural scrolling)
+
       # Key repeat — [non-default] macOS defaults: InitialKeyRepeat=25, KeyRepeat=6
       InitialKeyRepeat = 15;   # 15 = ~225ms before repeat starts
       KeyRepeat = 2;           # 2 = ~30ms between repeats (very fast — tune to taste)
@@ -56,10 +58,10 @@
                                           # false = key repeat; true = accent picker popup
 
       # Automatic text corrections — [non-default] macOS defaults: all true
-      NSAutomaticCapitalizationEnabled = false;
-      NSAutomaticDashSubstitutionEnabled = false;
-      NSAutomaticQuoteSubstitutionEnabled = false;
-      NSAutomaticSpellingCorrectionEnabled = false;
+      NSAutomaticCapitalizationEnabled = true;
+      NSAutomaticDashSubstitutionEnabled = true;
+      NSAutomaticQuoteSubstitutionEnabled = true;
+      NSAutomaticSpellingCorrectionEnabled = true;
       # NSAutomaticPeriodSubstitutionEnabled = false;   # macOS default: true
 
       # Dark mode — leave unset here; control it through System Settings instead.
@@ -99,7 +101,7 @@
 
     # ── Software Update ───────────────────────────────────────────────────────
     SoftwareUpdate = {
-      AutomaticallyInstallMacOSUpdates = false; # [non-default] macOS default: true
+      AutomaticallyInstallMacOSUpdates = true; # [non-default] macOS default: true
     };
 
     # ── Window Manager (Sequoia+) ─────────────────────────────────────────────
