@@ -29,4 +29,8 @@
     EDITOR = "nvim";
     PAGER  = "bat";
   };
+
+  home.sessionPath = [
+    "$HOME/.local/bin"
+  ];
 }

@@ -50,6 +50,9 @@ let
       $GUM spin --spinner pulse --title "Adding research tools (marimo)..." -- $UV add marimo
     fi
 
+    # 5.5 Prepare the virtual environment
+    $GUM spin --spinner pulse --title "Syncing dependencies and preparing .venv..." -- $UV sync
+
     # 6. Create robust .gitignore
     cat <<EOF > .gitignore
 __pycache__/
