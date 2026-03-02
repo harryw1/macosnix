@@ -28,9 +28,6 @@
 
       # Disable tree flattening to allow for Hyprland-style binary tree (Dwindle).
       enable-normalization-flatten-containers = false;
-      
-      # Explicit setting opposite orientation normalization
-      enable-normalization-flatten-containers = false;
       enable-normalization-opposite-orientation-for-nested-containers = true;
 
       # ── Gaps (Hyprland-style: tighter inner, wider outer) ──────────────────
