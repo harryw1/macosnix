@@ -92,7 +92,7 @@ uv sync
 
 ### Testing
 \`\`\`bash
-uv run pytest
+uv run pytest || [ $? -eq 5 ] && echo "No tests found — write some tests!" && exit 0
 \`\`\`
 
 ### Linting & Formatting
@@ -149,7 +149,7 @@ typecheck:
 
 # Run tests
 test:
-    uv run pytest
+    uv run pytest || [ $? -eq 5 ] && echo "No tests found — write some tests!" && exit 0
 
 # Run tests with coverage report
 cov:
