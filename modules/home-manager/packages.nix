@@ -21,7 +21,6 @@
     cmake
     duckdb
     uv           # Modern Python toolchain manager
-    marimo       # Reactive Python notebooks
 
     # Data / docs / monitoring
     imagemagick

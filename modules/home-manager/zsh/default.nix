@@ -51,7 +51,7 @@ in
       rff   = "ruff format";
       rfc   = "ruff check --fix";
       ty    = "uvx pyright";  # Astral-style type checking interface
-      nb    = "marimo edit";  # Start marimo notebook editor
+      nb    = "uvx marimo edit";  # Start marimo notebook editor (via uvx)
       pyinit = "pyinit";      # Calls our robust scaffolding script
       
       # ── Markdown conversion (Pandoc) ───────────────────────────────────────
