@@ -47,7 +47,6 @@
         colortbl
         pdflscape
         pdfcol
-        rotating
         ltablex
         threeparttable
         threeparttablex
