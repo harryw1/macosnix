@@ -149,7 +149,7 @@ typecheck:
 
 # Run tests
 test:
-    uv run pytest || [ $? -eq 5 ] && echo "No tests found — write some tests!" && exit 0
+    uv run pytest || { code=\$?; [ \$code -eq 5 ] && echo "No tests found — write some tests!" && exit 0; exit \$code; }
 
 # Run tests with coverage report
 cov:
