@@ -5,6 +5,7 @@
     ./cli.nix
     ./git
     ./kitty
+    ./latex
     ./nvim
     ./packages.nix
     ./scripts.nix

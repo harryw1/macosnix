@@ -1,0 +1,205 @@
+% === Professional Meeting Notes Preamble (XeLaTeX) ===
+% Shared preamble for meeting-notes documents.
+% Usage (ad-hoc): \input{~/.pandoc/templates/preamble.tex}
+% For pandoc use, prefer the self-contained meeting-notes.tex template.
+
+% --- Page Layout ---
+\usepackage[margin=1in,headheight=14pt]{geometry}
+
+% --- Typography & Fonts ---
+\usepackage{fontspec}
+\usepackage{microtype}
+
+\setmainfont{Times New Roman}[
+  Ligatures=TeX,
+  Numbers=OldStyle
+]
+
+\setsansfont{Arial}[
+  Ligatures=TeX
+]
+
+\setmonofont{Courier New}[Scale=0.95]
+
+% --- Hyperlinks & URLs ---
+\usepackage{hyperref}
+\usepackage{xurl}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  filecolor=blue!60!black,
+  urlcolor=blue!60!black,
+  citecolor=blue!60!black,
+  pdftitle={Meeting Notes},
+  pdfauthor={Harrison Weiss},
+  pdfsubject={Meeting Notes},
+  pdfkeywords={meeting, notes},
+  breaklinks=true,
+  pdfborder={0 0 0}
+}
+
+% --- Mathematics ---
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% --- Graphics & Floats ---
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{pdflscape}   % \begin{landscape}...\end{landscape} for individual wide pages
+\usepackage{rotating}    % \begin{sidewaystable}...\end{sidewaystable} for rotated wide tables
+
+\captionsetup{
+  font=small,
+  labelfont=bf,
+  format=plain,
+  justification=justified,
+  singlelinecheck=false
+}
+
+% --- Tables ---
+\makeatletter
+\@ifundefined{c@none}{\newcounter{none}}{}
+\makeatother
+
+\usepackage{calc}
+\usepackage{booktabs}    % \toprule, \midrule, \cmidrule, \botrule
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{adjustbox}   % \begin{adjustbox}{width=\textwidth}...\end{adjustbox}
+\usepackage{etoolbox}
+\usepackage{multirow}
+
+% longtable: stretch to fill text width
+\setlength{\LTleft}{0pt}
+\setlength{\LTright}{0pt}
+\setlength{\LTpre}{0pt}
+\setlength{\LTpost}{0pt}
+
+% Named column types (fixed-width with text wrapping)
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}p{#1}}
+\newcolumntype{X}{>{\raggedright\arraybackslash}X}   % for tabularx
+
+\AtBeginEnvironment{tabular}{\small}
+\AtBeginEnvironment{longtable}{\small}
+
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.2}
+
+% Alternating row shading
+\usepackage{colortbl}
+\AtBeginEnvironment{longtable}{\rowcolors{2}{gray!5}{white}\small}
+\AtBeginEnvironment{tabular}{\rowcolors{2}{gray!5}{white}\small}
+
+% --- Code Listings ---
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyvrb}
+
+\definecolor{codebg}{gray}{0.95}
+\definecolor{codeframe}{gray}{0.80}
+\definecolor{codecomment}{rgb}{0.25,0.5,0.35}
+\definecolor{codekeyword}{rgb}{0.0,0.0,0.75}
+\definecolor{codestring}{rgb}{0.64,0.08,0.08}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  breakatwhitespace=true,
+  escapeinside={@}{@},
+  frame=single,
+  rulecolor=\color{codeframe},
+  backgroundcolor=\color{codebg},
+  xleftmargin=0.5cm,
+  xrightmargin=0.5cm,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=8pt,
+  captionpos=b,
+  tabsize=4,
+  showstringspaces=false,
+  commentstyle=\color{codecomment},
+  keywordstyle=\color{codekeyword}\bfseries,
+  stringstyle=\color{codestring}
+}
+
+% --- Lists ---
+\usepackage{enumitem}
+\setlist{nosep}
+\setlist[itemize]{leftmargin=1.5em,itemsep=0.2em}
+\setlist[enumerate]{leftmargin=1.8em,itemsep=0.2em}
+\setlist[description]{leftmargin=2em,itemsep=0.2em}
+
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% --- Block Quotes ---
+\usepackage{csquotes}
+\renewenvironment{quote}{
+  \list{}{\rightmargin\leftmargin
+           \topsep=0.5em
+           \parsep=0em
+           \itemsep=0em
+           \leftmargin=1.5em
+           \fontsize{10pt}{12pt}\selectfont
+           \color{gray!70!black}
+  }%
+  \item\relax
+}{\endlist}
+
+% --- Headings ---
+\usepackage{titlesec}
+
+\titleformat{\section}
+  {\Large\bfseries\sffamily}{}
+  {0em}{}[\titlerule]
+
+\titleformat{\subsection}
+  {\large\bfseries\sffamily}{}
+  {0em}{}
+
+\titleformat{\subsubsection}
+  {\normalsize\bfseries\sffamily}{}
+  {0em}{}
+
+\titlespacing*{\section}{0pt}{1.5em}{0.8em}
+\titlespacing*{\subsection}{0pt}{1em}{0.5em}
+\titlespacing*{\subsubsection}{0pt}{0.8em}{0.3em}
+
+% --- Date ---
+\usepackage{datetime2}
+\DTMlangsetup[en-US]{ord=raise}
+
+% --- Typography Penalties ---
+\hyphenpenalty=1000
+\exhyphenpenalty=1000
+\widowpenalty=10000
+\clubpenalty=10000
+
+% --- Headers & Footers ---
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+\fancyhead[L]{\small\textsf{\leftmark}}
+\fancyhead[R]{\small\textsf{\today}}
+\fancyfoot[C]{\small\textsf{\thepage}}
+
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \renewcommand{\headrulewidth}{0pt}
+  \fancyfoot[C]{\small\textsf{\thepage}}
+}
+
+% --- Meeting Notes Helpers ---
+\newcommand{\meetingdate}[1]{\textbf{Date:} #1}
+\newcommand{\meetingattendees}[1]{\textbf{Attendees:} #1}
+\newcommand{\meetinglocation}[1]{\textbf{Location:} #1}
+
+% --- Spacing ---
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}

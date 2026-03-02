@@ -47,7 +47,7 @@
         colortbl
         pdflscape
         pdfcol
-        tabu
+        rotating
         ltablex
         threeparttable
         threeparttablex
@@ -56,6 +56,11 @@
         xltabular
         etoolbox
         ragged2e
+        siunitx
+        cleveref
+        bookmark
+        caption
+        subcaption
         amsfonts
         amsmath
         tcolorbox
@@ -67,7 +72,6 @@
         tikzfill
         tabularray
         setspace
-        caption
         mathspec # often used with xelatex
         ;
     })

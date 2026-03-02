@@ -11,71 +11,89 @@ return {
     end,
   },
 
-  -- Add table mode for easier editing of markdown tables
+  -- Table editing with Pandoc Grid Table style
   {
     "dhruvasagar/vim-table-mode",
     event = "VeryLazy",
     init = function()
-      -- Configure for Pandoc Grid Tables
       vim.g.table_mode_corner = "+"
       vim.g.table_mode_header_fillchar = "="
-      -- Disable default mappings to prevent messy which-key display
       vim.g.table_mode_disable_mappings = 1
     end,
     keys = {
       { "<leader>mt", "<cmd>TableModeToggle<cr>", desc = "Toggle Table Mode" },
-      { "<leader>mre", "<cmd>TableModeRealign<cr>", desc = "Realign Table" },
+      { "<leader>mr", "<cmd>TableModeRealign<cr>", desc = "Realign Table" },
     },
   },
 
-  -- Add image pasting capability
+  -- Image pasting from clipboard
   {
     "HakonHarnes/img-clip.nvim",
     event = "VeryLazy",
     opts = {
       default = {
-        dir_path = "assets", -- store images in an assets/ folder relative to the markdown file
+        dir_path = "assets",
         prompt_for_file_name = true,
       },
     },
     keys = {
-      { "<leader>mp", "<cmd>PasteImage<cr>", desc = "󰏶 Paste image from clipboard" },
+      { "<leader>mp", "<cmd>PasteImage<cr>", desc = "Paste image from clipboard" },
     },
   },
 
-  -- Obsidian support (requires a vault path)
-  -- {
-  --   "epwalsh/obsidian.nvim",
-  --   version = "*",
-  --   lazy = true,
-  --   ft = "markdown",
-  --   dependencies = { "nvim-lua/plenary.nvim" },
-  --   opts = {
-  --     workspaces = {
-  --       { name = "vault", path = "~/Documents/Notes" },
-  --     },
-  --   },
-  -- },
+  -- Obsidian-style wiki links, backlinks, and [[link]] completion
+  {
+    "epwalsh/obsidian.nvim",
+    version = "*",
+    lazy = true,
+    ft = "markdown",
+    dependencies = { "nvim-lua/plenary.nvim" },
+    opts = {
+      workspaces = {
+        { name = "notes", path = vim.env.HOME .. "/Documents/Notes" },
+      },
+      -- Use marksman for completion; obsidian.nvim adds [[link]] support on top
+      completion = { nvim_cmp = false },
+    },
+  },
 
-  -- Configure render-markdown.nvim if needed
+  -- In-buffer markdown rendering
   {
     "MeanderingProgrammer/render-markdown.nvim",
     opts = {
-      -- Enable rendering for wide tables
       heading = {
         enabled = true,
         sign = true,
         icons = { "󰲡 ", "󰲣 ", "󰲥 ", "󰲧 ", "󰲩 ", "󰲫 " },
       },
+      code     = { enabled = true },
+      bullet   = { enabled = true },
+      checkbox = { enabled = true },
+      quote    = { enabled = true },
+      dash     = { enabled = true },
+      link     = { enabled = true },
+      -- GitHub-style alert rendering ([!NOTE], [!WARNING], etc.)
+      callout = {
+        note      = { raw = "[!NOTE]",      rendered = "󰋽 Note",      highlight = "RenderMarkdownInfo"    },
+        tip       = { raw = "[!TIP]",       rendered = "󰌶 Tip",       highlight = "RenderMarkdownSuccess" },
+        important = { raw = "[!IMPORTANT]", rendered = "󰅾 Important", highlight = "RenderMarkdownHint"    },
+        warning   = { raw = "[!WARNING]",   rendered = "󰀪 Warning",   highlight = "RenderMarkdownWarn"    },
+        caution   = { raw = "[!CAUTION]",   rendered = "󰳦 Caution",   highlight = "RenderMarkdownError"   },
+      },
     },
   },
 
-  -- Add <leader>mv as a markdown-group alias for the browser preview
-  -- (LazyVim's markdown extra already sets <leader>cp for the same command)
+  -- Browser preview
   {
     "iamcco/markdown-preview.nvim",
     keys = {
-      { "<leader>mv", "<cmd>MarkdownPreviewToggle<cr>", ft = "markdown", desc = " Toggle Preview" },
+      { "<leader>mv", "<cmd>MarkdownPreviewToggle<cr>", ft = "markdown", desc = "Toggle Preview" },
     },
+  },
+
+  -- YAML schema validation for markdown frontmatter (Hugo, Jekyll, etc.)
+  {
+    "b0o/SchemaStore.nvim",
+    lazy = true,
   },
 }
