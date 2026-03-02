@@ -41,6 +41,7 @@ in
       vi   = "nvim";
       vim  = "nvim";
       grep = "rg";
+      cc   = "claude";
 
       # ── Python & Astral Toolchain ──────────────────────────────────────────
       py    = "python";

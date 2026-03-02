@@ -79,5 +79,9 @@
     btop
     ruff         # Python linter/formatter
     jq
+
+    # Claude Code
+    claude-code
+    claude-code-acp
   ];
 }

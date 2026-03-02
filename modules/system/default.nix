@@ -21,6 +21,9 @@
     trusted-users = [ "root" username ];
   };
 
+  # Allow unfree packages (required for Claude Code)
+  nixpkgs.config.allowUnfree = true;
+
   # Enable Touch ID for sudo authentication
   security.pam.services.sudo_local.touchIdAuth = true;
 
