@@ -28,6 +28,10 @@
 
       # Disable tree flattening to allow for Hyprland-style binary tree (Dwindle).
       enable-normalization-flatten-containers = false;
+      
+      # Explicit setting opposite orientation normalization
+      enable-normalization-flatten-containers = false;
+      enable-normalization-opposite-orientation-for-nested-containers = true;
 
       # ── Gaps (Hyprland-style: tighter inner, wider outer) ──────────────────
       gaps = {
@@ -53,27 +57,27 @@
 
         # ── Workspace Assignments ───────────────────────────────────────────
         # Browsers → workspace 1
-        { "if".app-id = "com.apple.Safari";               run = "move-node-to-workspace 1"; }
-        { "if".app-id = "com.google.Chrome";              run = "move-node-to-workspace 1"; }
-        { "if".app-id = "org.mozilla.firefox";            run = "move-node-to-workspace 1"; }
-        { "if".app-id = "company.thebrowser.Browser";     run = "move-node-to-workspace 1"; } # Arc
-        # Terminals → workspace 2
-        { "if".app-id = "net.kovidgoyal.kitty";           run = "move-node-to-workspace 2"; }
-        { "if".app-id = "com.apple.Terminal";             run = "move-node-to-workspace 2"; }
-        { "if".app-id = "io.alacritty";                   run = "move-node-to-workspace 2"; }
-        { "if".app-id = "com.mitchellh.ghostty";          run = "move-node-to-workspace 2"; }
-        # Editors / IDEs → workspace 3
-        { "if".app-id = "com.microsoft.VSCode";           run = "move-node-to-workspace 3"; }
-        { "if".app-id = "com.todesktop.230313mzl4w4u92"; run = "move-node-to-workspace 3"; } # Cursor
-        { "if".app-id = "com.apple.dt.Xcode";            run = "move-node-to-workspace 3"; }
-        # Chat / comms → workspace 4
-        { "if".app-id = "com.tinyspeck.slackmacgap";     run = "move-node-to-workspace 4"; }
-        { "if".app-id = "com.hnc.Discord";                run = "move-node-to-workspace 4"; }
-        { "if".app-id = "com.apple.Messages";             run = "move-node-to-workspace 4"; }
-        { "if".app-id = "ru.keepcoder.Telegram";          run = "move-node-to-workspace 4"; }
-        # Music / media → workspace 5
-        { "if".app-id = "com.spotify.client";             run = "move-node-to-workspace 5"; }
-        { "if".app-id = "com.apple.Music";                run = "move-node-to-workspace 5"; }
+        # { "if".app-id = "com.apple.Safari";               run = "move-node-to-workspace 1"; }
+        # { "if".app-id = "com.google.Chrome";              run = "move-node-to-workspace 1"; }
+        # { "if".app-id = "org.mozilla.firefox";            run = "move-node-to-workspace 1"; }
+        # { "if".app-id = "company.thebrowser.Browser";     run = "move-node-to-workspace 1"; } # Arc
+        # # Terminals → workspace 2
+        # { "if".app-id = "net.kovidgoyal.kitty";           run = "move-node-to-workspace 2"; }
+        # { "if".app-id = "com.apple.Terminal";             run = "move-node-to-workspace 2"; }
+        # { "if".app-id = "io.alacritty";                   run = "move-node-to-workspace 2"; }
+        # { "if".app-id = "com.mitchellh.ghostty";          run = "move-node-to-workspace 2"; }
+        # # Editors / IDEs → workspace 3
+        # { "if".app-id = "com.microsoft.VSCode";           run = "move-node-to-workspace 3"; }
+        # { "if".app-id = "com.todesktop.230313mzl4w4u92"; run = "move-node-to-workspace 3"; } # Cursor
+        # { "if".app-id = "com.apple.dt.Xcode";            run = "move-node-to-workspace 3"; }
+        # # Chat / comms → workspace 4
+        # { "if".app-id = "com.tinyspeck.slackmacgap";     run = "move-node-to-workspace 4"; }
+        # { "if".app-id = "com.hnc.Discord";                run = "move-node-to-workspace 4"; }
+        # { "if".app-id = "com.apple.Messages";             run = "move-node-to-workspace 4"; }
+        # { "if".app-id = "ru.keepcoder.Telegram";          run = "move-node-to-workspace 4"; }
+        # # Music / media → workspace 5
+        # { "if".app-id = "com.spotify.client";             run = "move-node-to-workspace 5"; }
+        # { "if".app-id = "com.apple.Music";                run = "move-node-to-workspace 5"; }
 
         # ── Dwindle (BSP) ────────────────────────────────────────────────────
         # 2. Emulate Hyprland Dwindle: new windows split the focused node in
@@ -85,7 +89,7 @@
       mode.main.binding = {
         # ── Window actions (mirrors common Hyprland SUPER binds) ─────────────
         alt-shift-q     = "close";                   # SUPER+Q  close window
-        alt-f           = "fullscreen";              # SUPER+F  fullscreen
+        alt-shift-f     = "fullscreen";              # SUPER+F  fullscreen
         alt-shift-space = "layout floating tiling";  # SUPER+V  toggle floating
 
         # ── Layouts ───────────────────────────────────────────────────────────
