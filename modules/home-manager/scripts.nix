@@ -23,6 +23,12 @@ let
     # 2. Choose Template
     TEMPLATE=$($GUM choose --header "Select project template" "Library (src-layout)" "Data & Research (marimo-focused)")
 
+    # 2b. Ask about entry point
+    ADD_ENTRYPOINT=false
+    if $GUM confirm --default=false "Add a main.py entry point? (enables \`uv run main.py\`)"; then
+      ADD_ENTRYPOINT=true
+    fi
+
     # 3. Setup Project Directory
     if [ -d "$PROJECT_NAME" ]; then
         if ! $GUM confirm "Directory $PROJECT_NAME already exists. Overwrite?"; then
@@ -143,13 +149,24 @@ EOF
       mkdir -p tests
 
       # Overwrite __init__.py: explicit re-export + __all__
-      cat <<EOF > src/$PKG_NAME/__init__.py
+      if [ "$ADD_ENTRYPOINT" = true ]; then
+        cat <<EOF > src/$PKG_NAME/__init__.py
+"""$PROJECT_NAME - add a short description here."""
+
+from .core import greet as greet
+from .core import main as main
+
+__all__ = ["greet", "main"]
+EOF
+      else
+        cat <<EOF > src/$PKG_NAME/__init__.py
 """$PROJECT_NAME - add a short description here."""
 
 from .core import greet as greet
 
 __all__ = ["greet"]
 EOF
+      fi
 
       # Create core.py: typed function in its own submodule
       cat <<EOF > src/$PKG_NAME/core.py
@@ -160,6 +177,16 @@ def greet(name: str) -> str:
     """Return a greeting for the given name."""
     return f"Hello, {name}!"
 EOF
+
+      if [ "$ADD_ENTRYPOINT" = true ]; then
+        cat <<EOF >> src/$PKG_NAME/core.py
+
+
+def main() -> None:
+    """Application entry point."""
+    print(greet("world"))
+EOF
+      fi
 
       # Create data directory with a sample CSV
       mkdir -p data
@@ -218,6 +245,24 @@ def test_read_sample_csv(data_dir: Path) -> None:
     assert len(rows) == 3
     assert rows[0]["name"] == "alice"
 EOF
+
+      # Create main.py and register CLI script entry point
+      if [ "$ADD_ENTRYPOINT" = true ]; then
+        cat <<EOF > main.py
+"""Entry point for $PROJECT_NAME."""
+
+from $PKG_NAME import main
+
+if __name__ == "__main__":
+    main()
+EOF
+
+        cat <<EOF >> pyproject.toml
+
+[project.scripts]
+$PROJECT_NAME = "$PKG_NAME:main"
+EOF
+      fi
     fi
 
     # 9. Generate justfile with standard project tasks
@@ -253,6 +298,15 @@ cov:
 pc:
     uv run pre-commit run --all-files
 EOF
+
+    if [ "$ADD_ENTRYPOINT" = true ]; then
+      cat <<EOF >> justfile
+
+# Run the application
+run:
+    uv run main.py
+EOF
+    fi
 
     # 10. Generate pre-commit config
     cat <<EOF > .pre-commit-config.yaml
