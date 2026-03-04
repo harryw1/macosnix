@@ -76,6 +76,7 @@
       "sublime-text"
       "tailscale-app"
       "thebrowsercompany-dia"
+      "zed"
     ];
 
     # ── Mac App Store apps ────────────────────────────────────────────────────
