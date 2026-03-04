@@ -61,6 +61,7 @@
       "claude"
       "cleanshot"
       "clop"
+      "codex"
       "discord"
       "firefox"
       "kitty"                  # terminal emulator
