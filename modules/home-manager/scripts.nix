@@ -104,6 +104,12 @@ EOF
 
     # 8. Configure pyproject.toml
     # Append to the pyproject.toml created by uv init
+    if [[ "$TEMPLATE" == *"Research"* ]]; then
+      PYRIGHT_INCLUDE='["src", "notebooks"]'
+    else
+      PYRIGHT_INCLUDE='["src"]'
+    fi
+
     cat <<EOF >> pyproject.toml
 
 [tool.ruff]
@@ -114,8 +120,12 @@ target-version = "py312"
 select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "PTH", "RUF"]
 
 [tool.pyright]
-include = ["src", "notebooks"]
+include = $PYRIGHT_INCLUDE
 typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.coverage.run]
 source = ["src"]
@@ -125,6 +135,90 @@ omit = ["tests/*"]
 show_missing = true
 skip_covered = false
 EOF
+
+    # 8b. For library projects, scaffold src module, data, and tests
+    if [[ "$TEMPLATE" == *"Library"* ]]; then
+      # Derive the importable package name (hyphens → underscores)
+      PKG_NAME=$(echo "$PROJECT_NAME" | tr '-' '_')
+      mkdir -p tests
+
+      # Overwrite __init__.py: explicit re-export + __all__
+      cat <<EOF > src/$PKG_NAME/__init__.py
+"""$PROJECT_NAME - add a short description here."""
+
+from .core import greet as greet
+
+__all__ = ["greet"]
+EOF
+
+      # Create core.py: typed function in its own submodule
+      cat <<EOF > src/$PKG_NAME/core.py
+"""Core functionality for $PROJECT_NAME."""
+
+
+def greet(name: str) -> str:
+    """Return a greeting for the given name."""
+    return f"Hello, {name}!"
+EOF
+
+      # Create data directory with a sample CSV
+      mkdir -p data
+      cat <<EOF > data/sample.csv
+name,value
+alice,1
+bob,2
+charlie,3
+EOF
+
+      # conftest.py: data_dir fixture anchored to the project root
+      cat <<EOF > tests/conftest.py
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture
+def data_dir() -> Path:
+    """Return path to the project-level data/ directory."""
+    return Path(__file__).parent.parent / "data"
+EOF
+
+      # Starter tests: package import, submodule import, re-export, data loading
+      cat <<EOF > tests/test_$PKG_NAME.py
+import csv
+from pathlib import Path
+
+import $PKG_NAME
+from $PKG_NAME import greet                     # re-exported via __init__
+from $PKG_NAME.core import greet as core_greet  # direct submodule import
+
+
+def test_package_importable() -> None:
+    assert $PKG_NAME is not None
+
+
+def test_greet_via_init() -> None:
+    assert greet("world") == "Hello, world!"
+
+
+def test_greet_via_submodule() -> None:
+    assert core_greet("nix") == "Hello, nix!"
+
+
+def test_re_export_on_package() -> None:
+    # greet is accessible on the package object via __init__ re-export
+    assert $PKG_NAME.greet("lib") == "Hello, lib!"
+
+
+def test_read_sample_csv(data_dir: Path) -> None:
+    csv_path = data_dir / "sample.csv"
+    assert csv_path.exists(), f"Expected data file at {csv_path}"
+    with csv_path.open() as f:
+        rows = list(csv.DictReader(f))
+    assert len(rows) == 3
+    assert rows[0]["name"] == "alice"
+EOF
+    fi
 
     # 9. Generate justfile with standard project tasks
     cat <<EOF > justfile
@@ -163,12 +257,18 @@ EOF
     # 10. Generate pre-commit config
     cat <<EOF > .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.0
+  - repo: local
     hooks:
-      - id: ruff
-        args: [--fix]
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
       - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
 EOF
 
     # 11. Initialize git
