@@ -81,7 +81,7 @@
     # ── Mac App Store apps ────────────────────────────────────────────────────
     # Requires `mas` in brews above. Find app IDs with: mas search <name>
     masApps = {
-      "Dropover" = "1355679052"
+      "Dropover" = 1355679052;
     };
   };
 }
