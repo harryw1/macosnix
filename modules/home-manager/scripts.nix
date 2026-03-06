@@ -333,9 +333,35 @@ EOF
     echo ""
     $GUM style --foreground 212 --border-foreground 212 --border double --padding "1 2" --margin "1 2" "✅ Project $PROJECT_NAME ($TEMPLATE) ready!"
   '';
+
+  ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
+    #!/usr/bin/env bash
+    # Pull models for Ollama
+
+    # Check if Ollama is running
+    if ! pgrep -x "Ollama" > /dev/null; then
+      echo "Ollama is not running. Starting Ollama.app..."
+      open -a Ollama
+      # Wait for Ollama to start
+      echo "Waiting for Ollama to start..."
+      while ! curl -s http://localhost:11434/api/tags > /dev/null; do
+        sleep 1
+      done
+    fi
+
+    echo "Pulling qwen3.5:9b (Chat)..."
+    ollama pull qwen3.5:9b
+
+    echo "Pulling lfm2.5-thinking:1.2b (Reasoning)..."
+    ollama pull lfm2.5-thinking:1.2b
+
+    echo "Pulling qwen3-embedding:8b (Embedding)..."
+    ollama pull qwen3-embedding:8b
+  '';
 in
 {
   home.packages = [
     pyinit
+    ollama-pull
   ];
 }

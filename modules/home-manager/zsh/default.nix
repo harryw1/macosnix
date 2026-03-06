@@ -55,6 +55,7 @@ in
       ipy   = "uvx ipython";  # Enhanced interactive Python REPL (via uvx)
       pyinit = "pyinit";      # Calls our robust scaffolding script
       wt    = "watchexec";    # Watch files and re-run commands on change
+      ol    = "ollama-pull";  # One-step model setup
       
       # ── Markdown conversion (Pandoc) ───────────────────────────────────────
       md2pdf = "pandoc --pdf-engine=xelatex --template='/Users/harryweiss/Documents/LaTeX Templates/professional-report.tex' --variable geometry:margin=1in --columns=80 -o";

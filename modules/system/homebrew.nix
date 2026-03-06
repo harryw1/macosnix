@@ -69,6 +69,7 @@
       "microsoft-office"
       "microsoft-teams"
       "obsidian"
+      "ollama"
       "pixelsnap"
       "raycast"
       "steam"
