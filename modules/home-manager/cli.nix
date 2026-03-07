@@ -3,7 +3,10 @@
 {
   # ── Modern CLI Tools ───────────────────────────────────────────────────────
   programs.bat.enable = true;
-  programs.fzf.enable = true;
+  programs.fzf = {
+    enable = true;
+    enableZshIntegration = true;
+  };
   programs.dircolors.enable = true;
   programs.zoxide = {
     enable = true;

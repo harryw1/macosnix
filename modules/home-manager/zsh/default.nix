@@ -21,8 +21,9 @@ in
     enableCompletion = true;
 
     history = {
-      size = 10000;
+      size = 50000;
       ignoreAllDups = true;
+      ignoreSpace = true;
     };
 
     historySubstringSearch = {
@@ -35,25 +36,32 @@ in
       ls   = "eza --icons --group-directories-first";
       ll   = "eza --icons --group-directories-first -l";
       la   = "eza --icons --group-directories-first --git -la";
+      lt   = "eza --icons --tree --group-directories-first";
       cat  = "bat";
       lg   = "lazygit";
       v    = "nvim";
       vi   = "nvim";
       vim  = "nvim";
       grep = "rg";
+      find = "fd";
       cc   = "claude";
+
+      # ── Navigation ────────────────────────────────────────────────────────
+      ".."   = "cd ..";
+      "..."  = "cd ../..";
+      "...." = "cd ../../..";
 
       # ── Python & Astral Toolchain ──────────────────────────────────────────
       py    = "python";
       uvp   = "uv python";
       uvr   = "uv run";
-      uvx   = "uvx";
       rff   = "ruff format";
       rfc   = "ruff check --fix";
       ty    = "uvx pyright";  # Astral-style type checking interface
       nb    = "uvx marimo edit";  # Start marimo notebook editor (via uvx)
       ipy   = "uvx ipython";  # Enhanced interactive Python REPL (via uvx)
       pyinit = "pyinit";      # Calls our robust scaffolding script
+      j     = "just";          # Shorthand for justfile tasks
       wt    = "watchexec";    # Watch files and re-run commands on change
       ol    = "ollama-pull";  # One-step model setup
       gaic  = "git-ai-commit"; # AI-generated commit message (ollama)
