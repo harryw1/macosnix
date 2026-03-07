@@ -7,7 +7,7 @@ set -euo pipefail
 MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
 
 # ── Guard: must be inside a git repo ──────────────────────────────────────────
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
   echo "❌ Not inside a git repository."
   exit 1
 fi
@@ -20,11 +20,11 @@ if [ -z "$STATUS" ]; then
 fi
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
-if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "🦙 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
-  while ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; do
+  while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
     echo -n "."
   done
@@ -59,7 +59,7 @@ printf '%s\n' \
   "" \
   "--- diff (truncated at 8 kB) ---" \
   "$DIFF" \
-  > "$PROMPT_FILE"
+  >"$PROMPT_FILE"
 
 # ── Call ollama REST API ───────────────────────────────────────────────────────
 # Using the API instead of `ollama run` lets us pass tuning parameters:
@@ -84,7 +84,7 @@ payload = {
     }
 }
 print(json.dumps(payload))
-" > "$PAYLOAD_FILE"
+" >"$PAYLOAD_FILE"
 trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
 
 gum spin --spinner dot --title "🦙  Generating commit message with $MODEL..." -- \
@@ -92,17 +92,17 @@ gum spin --spinner dot --title "🦙  Generating commit message with $MODEL..." 
 
 # Parse response; fall back to awk anchor on commit type if model ignored think:false
 RAW=$(python3 -c "import json,sys; d=json.load(open('$MSG_FILE')); print(d.get('response',''))" 2>/dev/null || true)
-COMMIT_MSG=$(printf '%s' "$RAW" \
-  | awk '
+COMMIT_MSG=$(printf '%s' "$RAW" |
+  awk '
       /<think>/        { xml=1 }
       xml && /<\/think>/ { xml=0; next }
       xml              { next }
       !found && /^(feat|fix|chore|docs|refactor|style|test|perf|ci|build)(\([^)]*\))?!?:/ { found=1 }
       found            { print }
-    ' \
-  | head -20 \
-  | sed '/^[[:space:]]*$/d' \
-  | sed 's/^[[:space:]]*//')
+    ' |
+  head -20 |
+  sed '/^[[:space:]]*$/d' |
+  sed 's/^[[:space:]]*//')
 
 # If anchor didn't match (model returned clean output), use the whole response
 if [ -z "$COMMIT_MSG" ]; then
@@ -127,46 +127,46 @@ ACTION=$(gum choose \
   --header "What would you like to do?" \
   "✅  Stage all & commit" \
   "📌  Commit staged only" \
-  "✏️   Edit then commit" \
+  "✏️  Edit then commit" \
   "🔄  Regenerate" \
   "❌  Abort")
 
 case "$ACTION" in
-  "✅  Stage all & commit")
-    git add -A
-    printf '%s\n' "$COMMIT_MSG" | git commit -F -
+"✅  Stage all & commit")
+  git add -A
+  printf '%s\n' "$COMMIT_MSG" | git commit -F -
+  echo ""
+  gum style --foreground 212 "✅  Committed!"
+  git log --oneline -1
+  ;;
+"📌  Commit staged only")
+  printf '%s\n' "$COMMIT_MSG" | git commit -F -
+  echo ""
+  gum style --foreground 212 "✅  Committed (staged only)!"
+  git log --oneline -1
+  ;;
+"✏️   Edit then commit")
+  TMPFILE=$(mktemp)
+  printf '%s\n' "$COMMIT_MSG" >"$TMPFILE"
+  "${EDITOR:-nvim}" "$TMPFILE"
+  EDITED=$(cat "$TMPFILE")
+  rm -f "$TMPFILE"
+  if [ -n "$EDITED" ]; then
+    STAGE=$(gum choose --header "Stage files?" "Stage all" "Staged only")
+    [ "$STAGE" = "Stage all" ] && git add -A
+    printf '%s\n' "$EDITED" | git commit -F -
     echo ""
     gum style --foreground 212 "✅  Committed!"
     git log --oneline -1
-    ;;
-  "📌  Commit staged only")
-    printf '%s\n' "$COMMIT_MSG" | git commit -F -
-    echo ""
-    gum style --foreground 212 "✅  Committed (staged only)!"
-    git log --oneline -1
-    ;;
-  "✏️   Edit then commit")
-    TMPFILE=$(mktemp)
-    printf '%s\n' "$COMMIT_MSG" > "$TMPFILE"
-    "${EDITOR:-nvim}" "$TMPFILE"
-    EDITED=$(cat "$TMPFILE")
-    rm -f "$TMPFILE"
-    if [ -n "$EDITED" ]; then
-      STAGE=$(gum choose --header "Stage files?" "Stage all" "Staged only")
-      [ "$STAGE" = "Stage all" ] && git add -A
-      printf '%s\n' "$EDITED" | git commit -F -
-      echo ""
-      gum style --foreground 212 "✅  Committed!"
-      git log --oneline -1
-    else
-      echo "Aborted (empty message)."
-    fi
-    ;;
-  "🔄  Regenerate")
-    exec "$0"
-    ;;
-  "❌  Abort")
-    echo "Aborted."
-    exit 0
-    ;;
+  else
+    echo "Aborted (empty message)."
+  fi
+  ;;
+"🔄  Regenerate")
+  exec "$0"
+  ;;
+"❌  Abort")
+  echo "Aborted."
+  exit 0
+  ;;
 esac
