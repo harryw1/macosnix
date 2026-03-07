@@ -8,7 +8,7 @@ HOST ?= aristotle
 FLAVOR ?= frappe
 NIX  := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: bootstrap check-rosetta check-clean switch build check update update-nixpkgs update-brew gc diff fmt help latte frappe
+.PHONY: bootstrap check-rosetta check-clean switch build check update update-nixpkgs update-brew gc diff fmt git help latte frappe
 
 bootstrap: check-rosetta ## First-time activation (use before darwin-rebuild is on PATH)
 	sudo $(NIX) run nix-darwin -- switch --flake ".#$(HOST)"
@@ -64,6 +64,9 @@ gc: ## Remove old generations and run garbage collection
 
 fmt: ## Format all Nix files (requires nixfmt-rfc-style)
 	$(NIX) run nixpkgs#nixfmt-rfc-style -- flake.nix $$(find modules -name '*.nix')
+
+git: ## Use ollama to analyse changes and write a conventional commit message
+	@bash "$(CURDIR)/scripts/git-ai-commit.sh"
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \

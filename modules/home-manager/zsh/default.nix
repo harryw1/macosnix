@@ -56,12 +56,17 @@ in
       pyinit = "pyinit";      # Calls our robust scaffolding script
       wt    = "watchexec";    # Watch files and re-run commands on change
       ol    = "ollama-pull";  # One-step model setup
+      gaic  = "git-ai-commit"; # AI-generated commit message (ollama)
       
-      # ── Markdown conversion (Pandoc) ───────────────────────────────────────
-      md2pdf = "pandoc --pdf-engine=xelatex --template='/Users/harryweiss/Documents/LaTeX Templates/professional-report.tex' --variable geometry:margin=1in --columns=80 -o";
-      
-      # md2docx file.md -> file.docx
-      md2docx = "pandoc --columns=80 -o";
+      # ── Markdown conversion (mdconvert: python-docx + WeasyPrint) ────────────
+      # Report style (navy/gold palette, cover page)
+      md2docx = "mdconvert -f docx";       # md2docx report.md  → report.docx
+      md2pdf  = "mdconvert -f pdf";        # md2pdf  report.md  → report.pdf
+      md2html = "mdconvert -f html";       # md2html report.md  → report.html
+      # Meeting-notes style (clean black/grey, no cover page)
+      md2notes      = "mdconvert -f docx -t notes";
+      md2notes-pdf  = "mdconvert -f pdf  -t notes";
+      md2notes-html = "mdconvert -f html -t notes";
     };
 
     plugins = [

@@ -334,6 +334,21 @@ EOF
     $GUM style --foreground 212 --border-foreground 212 --border double --padding "1 2" --margin "1 2" "✅ Project $PROJECT_NAME ($TEMPLATE) ready!"
   '';
 
+  # ── mdconvert: markdown → docx / html / pdf (python-docx + WeasyPrint) ──────
+  # Replaces the fragile pandoc table pipeline.
+  # The Python script lives next to this file; uv resolves its inline deps on
+  # first run (cached thereafter under ~/.cache/uv).
+  mdconvert = pkgs.writeShellScriptBin "mdconvert" ''
+    exec ${pkgs.uv}/bin/uv run "${./mdconvert.py}" "$@"
+  '';
+
+  # Thin wrapper: the real logic lives in scripts/git-ai-commit.sh so that
+  # `make git` can call it directly (before `make switch` has been run) while
+  # this nix-installed binary makes `gaic` available system-wide afterwards.
+  git-ai-commit = pkgs.writeShellScriptBin "git-ai-commit" ''
+    exec bash "${../../scripts/git-ai-commit.sh}" "$@"
+  '';
+
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
     #!/usr/bin/env bash
     # Pull models for Ollama
@@ -363,5 +378,7 @@ in
   home.packages = [
     pyinit
     ollama-pull
+    mdconvert
+    git-ai-commit
   ];
 }
