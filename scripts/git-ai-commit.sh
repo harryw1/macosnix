@@ -32,8 +32,8 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
 fi
 
 # ── Gather git context (cap diff to avoid token overflow) ─────────────────────
-DIFF=$(git diff HEAD 2>/dev/null | head -c 8000)
-[ -z "$DIFF" ] && DIFF=$(git diff --cached 2>/dev/null | head -c 8000)
+DIFF=$(git diff HEAD 2>/dev/null | head -c 8000 || true)
+[ -z "$DIFF" ] && DIFF=$(git diff --cached 2>/dev/null | head -c 8000 || true)
 
 # ── Build prompt ───────────────────────────────────────────────────────────────
 PROMPT_FILE=$(mktemp)

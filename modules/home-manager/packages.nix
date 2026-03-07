@@ -26,53 +26,6 @@
 
     # Data / docs / monitoring
     imagemagick
-    pandoc
-    (texlive.combine {
-      inherit (texlive) 
-        scheme-small
-        geometry
-        tools
-        fontspec
-        microtype
-        xcolor
-        hyperref
-        xurl
-        parskip
-        enumitem
-        graphics
-        booktabs
-        multirow
-        wrapfig
-        float
-        colortbl
-        pdflscape
-        pdfcol
-        ltablex
-        threeparttable
-        threeparttablex
-        ulem
-        makecell
-        xltabular
-        etoolbox
-        ragged2e
-        siunitx
-        cleveref
-        bookmark
-        caption
-        amsfonts
-        amsmath
-        tcolorbox
-        fancyhdr
-        titlesec
-        tocloft
-        environ
-        pgf
-        tikzfill
-        tabularray
-        setspace
-        mathspec # often used with xelatex
-        ;
-    })
     marksman     # Markdown LSP
     markdownlint-cli2 # Markdown linter
     prettier     # Formatter
