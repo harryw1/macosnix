@@ -403,6 +403,7 @@ EOF
 
   ai-search = pkgs.writeShellScriptBin "ai-search" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
+    export AI_SEARCH_PY_PATH="${../../scripts/ai-search.py}"
     exec bash "${../../scripts/ai-search.sh}" "$@"
   '';
 

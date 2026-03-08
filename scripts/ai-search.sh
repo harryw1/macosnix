@@ -12,9 +12,8 @@ MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:8b}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP_DIR="$XDG_DATA_HOME/ai-search"
 
-# Find the python script (assumes it's next to this bash script)
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-PY_SCRIPT="$DIR/ai-search.py"
+# Python script path (can be overridden by Nix during build)
+PY_SCRIPT="${AI_SEARCH_PY_PATH:-$DIR/ai-search.py}"
 
 # Initialize variables
 INDEX_DIR=""
@@ -98,10 +97,10 @@ if [ "$DO_STATUS" = true ]; then
 import json, sys
 try:
     d = json.load(sys.stdin)
-    print(f"  Path:     {d[\"db_path\"]}")
-    print(f"  Size:     {d[\"size_mb\"]} MB")
-    print(f"  Files:    {d[\"files_indexed\"]}")
-    print(f"  Chunks:   {d[\"total_chunks\"]}")
+    print("  Path:     " + d["db_path"])
+    print("  Size:     " + str(d["size_mb"]) + " MB")
+    print("  Files:    " + str(d["files_indexed"]))
+    print("  Chunks:   " + str(d["total_chunks"]))
 except Exception as e:
     print("Error reading status.")
 '
