@@ -349,6 +349,14 @@ EOF
     exec bash "${../../scripts/git-ai-commit.sh}" "$@"
   '';
 
+  ai-explain = pkgs.writeShellScriptBin "ai-explain" ''
+    exec bash "${../../scripts/ai-explain.sh}" "$@"
+  '';
+
+  ai-pr = pkgs.writeShellScriptBin "ai-pr" ''
+    exec bash "${../../scripts/ai-pr.sh}" "$@"
+  '';
+
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
     #!/usr/bin/env bash
     # Pull models for Ollama
@@ -380,5 +388,7 @@ in
     ollama-pull
     mdconvert
     git-ai-commit
+    ai-explain
+    ai-pr
   ];
 }

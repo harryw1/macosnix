@@ -65,6 +65,8 @@ in
       wt    = "watchexec";    # Watch files and re-run commands on change
       ol    = "ollama-pull";  # One-step model setup
       gaic  = "git-ai-commit"; # AI-generated commit message (ollama)
+      aie   = "ai-explain";    # AI explanation of commands/errors
+      aipr  = "ai-pr";         # AI-generated PR description
       
       # ── Markdown conversion (mdconvert: python-docx + WeasyPrint) ────────────
       # Report style (navy/gold palette, cover page)

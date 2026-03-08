@@ -68,6 +68,12 @@ fmt: ## Format all Nix files (requires nixfmt-rfc-style)
 git: ## Use ollama to analyse changes and write a conventional commit message
 	@bash "$(CURDIR)/scripts/git-ai-commit.sh"
 
+explain: ## Use ollama to explain a command or error
+	@bash "$(CURDIR)/scripts/ai-explain.sh"
+
+pr: ## Use ollama to generate a GitHub PR description
+	@bash "$(CURDIR)/scripts/ai-pr.sh"
+
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
