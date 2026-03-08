@@ -13,6 +13,7 @@ XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP_DIR="$XDG_DATA_HOME/ai-search"
 
 # Python script path (can be overridden by Nix during build)
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 PY_SCRIPT="${AI_SEARCH_PY_PATH:-$DIR/ai-search.py}"
 
 # Initialize variables
@@ -132,8 +133,18 @@ if [ -n "$SEARCH_QUERY" ]; then
       exit 1
   fi
 
+  # Check if current directory has indexed files
+  if ! uv run "$PY_SCRIPT" --check-dir "$PWD" >/dev/null 2>&1; then
+      echo ""
+      if gum confirm "The current directory ($PWD) hasn't been indexed. Do you want to index it now?"; then
+          echo ""
+          uv run "$PY_SCRIPT" --index "$PWD"
+      fi
+  fi
+
   RESULTS_FILE=$(mktemp)
   trap 'rm -f "$RESULTS_FILE"' EXIT
+  export RESULTS_FILE
   
   gum spin --spinner dot --title "󰚩  Searching..." -- \
     sh -c "uv run \"$PY_SCRIPT\" --search \"$SEARCH_QUERY\" > \"$RESULTS_FILE\""
@@ -152,7 +163,7 @@ if [ -n "$SEARCH_QUERY" ]; then
   python3 -c "
 import json, sys, os
 try:
-    with open(os.environ['RESULTS_FILE']) as f:
+    with open('$RESULTS_FILE') as f:
         results = json.load(f)
     if not results:
         print('No close matches found.')

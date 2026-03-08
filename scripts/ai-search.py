@@ -254,6 +254,21 @@ def get_status(conn: sqlite3.Connection):
         }))
 
 
+def check_dir(conn: sqlite3.Connection, directory: str):
+    """Exit 0 if the directory has indexed files, else exit 1."""
+    abs_dir = str(Path(directory).resolve())
+    prefix = abs_dir if abs_dir.endswith("/") else abs_dir + "/"
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT 1 FROM file_metadata WHERE filepath LIKE ? LIMIT 1", (prefix + "%",))
+        if cur.fetchone():
+            sys.exit(0)
+        else:
+            sys.exit(1)
+    except sqlite3.OperationalError:
+        sys.exit(1)
+
+
 def clear_db():
     """Delete the database completely."""
     if DB_PATH.exists():
@@ -274,6 +289,7 @@ def main():
     group.add_argument("--search", metavar="QUERY", help="Semantic search query")
     group.add_argument("--status", action="store_true", help="Print database statistics as JSON")
     group.add_argument("--clear", action="store_true", help="Delete the vector database")
+    group.add_argument("--check-dir", metavar="DIR", help="Check if directory is indexed (exits 0 if true, 1 if false)")
     
     args = parser.parse_args()
 
@@ -290,6 +306,8 @@ def main():
         index_directory(conn, args.index)
     elif args.search:
         search(conn, args.search)
+    elif args.check_dir:
+        check_dir(conn, args.check_dir)
 
     conn.close()
 
