@@ -38,6 +38,19 @@ import yaml
 import markdown as md_lib
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+try:
+    from docx import Document
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
+except ImportError:
+    Document = OxmlElement = qn = Inches = Pt = RGBColor = None
+
+try:
+    from weasyprint import HTML
+except ImportError:
+    HTML = None
+
 
 # ── Colour palettes ────────────────────────────────────────────────────────────
 
@@ -127,7 +140,6 @@ def _hex(color: str) -> str:
 
 def _rgb(color: str):
     """Convert #RRGGBB to docx RGBColor."""
-    from docx.shared import RGBColor
     h = _hex(color)
     return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
@@ -136,8 +148,6 @@ def _rgb(color: str):
 
 def _para_bottom_border(para, color: str, sz: int = 8) -> None:
     """Add a bottom border line under a paragraph (replicates LaTeX \\titlerule)."""
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
     pPr = para._p.get_or_add_pPr()
     pBdr = OxmlElement("w:pBdr")
     bot = OxmlElement("w:bottom")
@@ -151,8 +161,6 @@ def _para_bottom_border(para, color: str, sz: int = 8) -> None:
 
 def _shade_para(para, fill: str) -> None:
     """Apply background shading to an entire paragraph."""
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
     pPr = para._p.get_or_add_pPr()
     shd = OxmlElement("w:shd")
     shd.set(qn("w:val"), "clear")
@@ -162,8 +170,6 @@ def _shade_para(para, fill: str) -> None:
 
 
 def _shade_cell(cell, fill: str) -> None:
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
     tcPr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
     shd.set(qn("w:val"), "clear")
@@ -173,8 +179,6 @@ def _shade_cell(cell, fill: str) -> None:
 
 
 def _cell_borders(cell, color: str) -> None:
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
     tcPr = cell._tc.get_or_add_tcPr()
     borders = OxmlElement("w:tcBorders")
     for side in ("top", "left", "bottom", "right"):
@@ -188,8 +192,6 @@ def _cell_borders(cell, color: str) -> None:
 
 def _add_hyperlink(para, url: str, text: str, palette: dict) -> None:
     """Insert a properly linked hyperlink run into a paragraph."""
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
     r_id = para.part.relate_to(
         url,
         "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
@@ -226,8 +228,6 @@ def _walk_inline(
     mono: bool = False,
 ) -> None:
     """Recursively add inline content (text, bold, italic, code, links…) to a paragraph."""
-    from docx.shared import Pt
-
     if isinstance(node, NavigableString):
         text = str(node)
         if text:
@@ -269,8 +269,6 @@ def _walk_inline(
 # ── List walker ────────────────────────────────────────────────────────────────
 
 def _walk_list(doc, list_node, palette: dict, template: str, level: int = 0, ordered: bool = False) -> None:
-    from docx.shared import Pt, Inches
-
     style = "List Number" if ordered else "List Bullet"
 
     for child in list_node.children:
@@ -307,8 +305,6 @@ _PAGE_WIDTH_INCHES = 6.5  # 8.5 in page − 1 in left − 1 in right margin
 
 
 def _build_table(doc, table_node: Tag, palette: dict) -> None:
-    from docx.shared import Pt, Inches
-
     # Collect header + body row nodes (Tag objects, not plain text, so we can
     # walk inline formatting — bold/italic/code — inside cells)
     thead = table_node.find("thead")
@@ -392,8 +388,6 @@ def _build_table(doc, table_node: Tag, palette: dict) -> None:
 # ── Block walker ───────────────────────────────────────────────────────────────
 
 def _walk_block(doc, parent, palette: dict, template: str) -> None:
-    from docx.shared import Pt, Inches
-
     for node in parent.children:
         if isinstance(node, NavigableString):
             text = str(node).strip()
@@ -507,9 +501,6 @@ def _walk_block(doc, parent, palette: dict, template: str) -> None:
 # ── DOCX builder ───────────────────────────────────────────────────────────────
 
 def build_docx(meta: dict, html: str, palette: dict, template: str) -> bytes:
-    from docx import Document
-    from docx.shared import Pt, Inches
-
     doc = Document()
 
     # Page margins (1 in on all sides)
@@ -829,7 +820,6 @@ def build_html(meta: dict, html_body: str, palette: dict, template: str) -> str:
 # ── PDF builder ────────────────────────────────────────────────────────────────
 
 def build_pdf(meta: dict, html_body: str, palette: dict, template: str) -> bytes:
-    from weasyprint import HTML
     full_html = build_html(meta, html_body, palette, template)
     return HTML(string=full_html).write_pdf()
 
