@@ -84,10 +84,10 @@ def init_db() -> sqlite3.Connection:
     conn.execute("PRAGMA journal_mode=WAL;")
 
     # We use a virtual table provided by sqlite-vec. 
-    # qwen3-embedding:8b produces 3584-dimensional vectors.
+    # qwen3-embedding:8b produces 4096-dimensional vectors.
     conn.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS file_embeddings USING vec0(
-            embedding float[3584]
+            embedding float[4096]
         )
     """)
     conn.execute("""
