@@ -50,8 +50,10 @@ SEARCH_DB_PATH = Path(XDG_DATA_HOME) / "ai-search" / "vectors.db"
 
 # Characters of file content to pass as context per file
 SNIPPET_LEN = 400
-# Maximum files sent to the LLM in a single call (stay within context window)
-MAX_FILES_PER_BATCH = 70
+# Maximum files sent to the LLM in a single call (stay within context window).
+# Each file can produce ~2 operations × ~80 tokens each, so 40 files ≈ 6 400
+# tokens of output — safely within the num_predict budget below.
+MAX_FILES_PER_BATCH = 40
 # Cosine-distance threshold for declaring two files "duplicates" via embeddings
 DUPE_THRESHOLD = 0.12
 
@@ -286,10 +288,11 @@ def scan_directory(
     if not all_files:
         project_roots = find_project_roots(root, recursive)
         if project_roots:
-            labels = [detect_code_project(p) or p.name for p in sorted(project_roots)]
+            # Show project directory names (not marker filenames which repeat)
+            names = [p.name for p in sorted(project_roots, key=lambda p: p.name)]
             print(
-                f"Detected {len(project_roots)} code project(s) "
-                f"({', '.join(labels)}). "
+                f"Detected {len(project_roots)} code project(s): "
+                f"{', '.join(names)}. "
                 "Filtering to organizable assets inside each. "
                 "Pass --all-files to include everything.",
                 file=sys.stderr,
@@ -365,7 +368,8 @@ def call_llm(prompt: str) -> str:
         "think":  False,          # top-level: suppresses chain-of-thought on qwen3 models
         "options": {
             "temperature": 0.15,
-            "num_predict": 1024,
+            # Budget: 40 files × 2 ops × ~80 tokens/op + overhead ≈ 7 000 tokens
+            "num_predict": 8192,
         },
     }
     try:
@@ -780,6 +784,10 @@ def main() -> None:
         "--all-files", action="store_true",
         help="Disable code-project filtering: include source, config, and lock files"
     )
+    parser.add_argument(
+        "--from-scan", metavar="FILE",
+        help="Load pre-scanned file list from a JSON file instead of re-scanning (output of --scan)"
+    )
 
     # Apply-mode flags
     parser.add_argument("--dry-run", action="store_true", help="Preview without making changes")
@@ -804,7 +812,16 @@ def main() -> None:
             args.organize = True
             args.dedupe   = True
 
-        files = scan_directory(args.plan, recursive=not args.top_level, all_files=args.all_files)
+        if args.from_scan:
+            scan_path = Path(args.from_scan)
+            if not scan_path.exists():
+                print(f"Error: scan file not found: {scan_path}", file=sys.stderr)
+                sys.exit(1)
+            with open(scan_path) as fh:
+                files = json.load(fh)
+            print(f"Loaded {len(files)} file(s) from pre-scan.", file=sys.stderr)
+        else:
+            files = scan_directory(args.plan, recursive=not args.top_level, all_files=args.all_files)
 
         if not files:
             result: dict = {"root": str(Path(args.plan).resolve()),

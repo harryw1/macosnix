@@ -152,8 +152,10 @@ SCAN_FILE=$(mktemp /tmp/ai-organize-scan-XXXXXX.json)
 PLAN_FILE=$(mktemp /tmp/ai-organize-plan-XXXXXX.json)
 trap 'rm -f "$SCAN_FILE" "$PLAN_FILE"' EXIT
 
+# Scan flags: filtering options that affect which files are included
 SCAN_FLAGS=""
-$DO_TOP_LEVEL && SCAN_FLAGS="--top-level"
+$DO_TOP_LEVEL && SCAN_FLAGS="$SCAN_FLAGS --top-level"
+$DO_ALL_FILES && SCAN_FLAGS="$SCAN_FLAGS --all-files"
 
 gum spin --spinner dot --title "Scanning files…" -- \
   bash -c "uv run \"$PY_SCRIPT\" --scan \"$TARGET_DIR\" $SCAN_FLAGS > \"$SCAN_FILE\""
@@ -167,7 +169,7 @@ echo "󰚩  Generating plan… (this may take a minute)"
 echo ""
 
 OLLAMA_MODEL="$MODEL" OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
-  uv run "$PY_SCRIPT" --plan "$TARGET_DIR" $PY_FLAGS > "$PLAN_FILE"
+  uv run "$PY_SCRIPT" --plan "$TARGET_DIR" --from-scan "$SCAN_FILE" $PY_FLAGS > "$PLAN_FILE"
 
 echo ""
 
