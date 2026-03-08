@@ -8,7 +8,7 @@ HOST ?= aristotle
 FLAVOR ?= frappe
 NIX  := nix --extra-experimental-features 'nix-command flakes'
 
-.PHONY: bootstrap check-rosetta check-clean switch build check update update-nixpkgs update-brew gc diff fmt git help latte frappe
+.PHONY: bootstrap check-rosetta check-clean switch build check update update-nixpkgs update-brew gc diff fmt git organize help latte frappe
 
 bootstrap: check-rosetta ## First-time activation (use before darwin-rebuild is on PATH)
 	sudo $(NIX) run nix-darwin -- switch --flake ".#$(HOST)"
@@ -81,6 +81,10 @@ chat: ## Ask a question about your indexed codebase (RAG)
 	@AI_SEARCH_PY_PATH="$(CURDIR)/scripts/ai-search.py" \
 	 AI_CHAT_PY_PATH="$(CURDIR)/scripts/ai-chat.py" \
 	 bash "$(CURDIR)/scripts/ai-chat.sh"
+
+organize: ## AI-powered file reorganizer, renamer, and deduplicator
+	@AI_ORGANIZE_PY_PATH="$(CURDIR)/scripts/ai-organize.py" \
+	 bash "$(CURDIR)/scripts/ai-organize.sh" $(if $(DIR),$(DIR),)
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \

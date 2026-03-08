@@ -554,6 +554,12 @@ README
     exec bash "${../../scripts/ai-slide-copy.sh}" "$@"
   '';
 
+  ai-organize = pkgs.writeShellScriptBin "ai-organize" ''
+    export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
+    export AI_ORGANIZE_PY_PATH="${../../scripts/ai-organize.py}"
+    exec bash "${../../scripts/ai-organize.sh}" "$@"
+  '';
+
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
     #!/usr/bin/env bash
     # Pull models for Ollama
@@ -595,5 +601,6 @@ in
     ai-narrative
     ai-duck
     ai-slide-copy
+    ai-organize
   ];
 }
