@@ -107,7 +107,7 @@ export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
 gum spin --spinner dot --title "󰚩  Thinking with $MODEL..." -- \
   sh -c 'curl -s http://localhost:11434/api/generate \
     -H "Content-Type: application/json" \
-    -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
+    -d @"$1" > "$2" 2>/dev/null' _ "$PAYLOAD_FILE" "$MSG_FILE"
 
 # Cleanly parse out the think block and the final explanation using Python
 EXPLANATION=$(python3 -c "

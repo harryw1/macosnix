@@ -147,7 +147,7 @@ if [ -n "$SEARCH_QUERY" ]; then
   export RESULTS_FILE
   
   gum spin --spinner dot --title "󰚩  Searching..." -- \
-    sh -c "uv run \"$PY_SCRIPT\" --search \"$SEARCH_QUERY\" > \"$RESULTS_FILE\""
+    sh -c 'uv run "$1" --search "$2" > "$3"' _ "$PY_SCRIPT" "$SEARCH_QUERY" "$RESULTS_FILE"
 
   # Check if empty (no results or error)
   if [ ! -s "$RESULTS_FILE" ]; then

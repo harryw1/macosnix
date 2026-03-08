@@ -90,7 +90,7 @@ trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
 
 export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
 gum spin --spinner dot --title "󰚩  Generating commit message with $MODEL..." -- \
-  sh -c 'curl -s http://localhost:11434/api/generate -H "Content-Type: application/json" -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
+  sh -c 'curl -s http://localhost:11434/api/generate -H "Content-Type: application/json" -d @"$1" > "$2" 2>/dev/null' _ "$PAYLOAD_FILE" "$MSG_FILE"
 
 # Parse response; fall back to awk anchor on commit type if model ignored think:false
 RAW=$(python3 -c "import json,sys,os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" 2>/dev/null || true)
