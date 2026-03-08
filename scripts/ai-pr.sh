@@ -150,7 +150,14 @@ fi
 
 # ── Display proposed description ──────────────────────────────────────────────
 echo ""
+TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
+if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then
+  TERM_WIDTH=80
+fi
+[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
+
 gum style \
+  --width "$TERM_WIDTH" \
   --border double --padding "1 2" \
   --border-foreground 212 --foreground 255 \
   "$(printf '📋  %s\n\n%s' "$PR_TITLE" "$PR_BODY")"
