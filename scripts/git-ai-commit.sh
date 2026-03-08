@@ -8,20 +8,20 @@ MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
 
 # ── Guard: must be inside a git repo ──────────────────────────────────────────
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
-  echo "❌ Not inside a git repository."
+  echo " Not inside a git repository."
   exit 1
 fi
 
 # ── Guard: must have something to commit ──────────────────────────────────────
 STATUS=$(git status --short)
 if [ -z "$STATUS" ]; then
-  echo "✅ Nothing to commit — working tree is clean."
+  echo " Nothing to commit — working tree is clean."
   exit 0
 fi
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "🦙 Starting Ollama..."
+  echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
@@ -87,7 +87,7 @@ print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
 
-gum spin --spinner dot --title "🦙  Generating commit message with $MODEL..." -- \
+gum spin --spinner dot --title "󰚩  Generating commit message with $MODEL..." -- \
   sh -c "curl -s http://localhost:11434/api/generate -H 'Content-Type: application/json' -d @$PAYLOAD_FILE > $MSG_FILE 2>/dev/null"
 
 # Parse response; fall back to awk anchor on commit type if model ignored think:false
@@ -110,7 +110,7 @@ if [ -z "$COMMIT_MSG" ]; then
 fi
 
 if [ -z "$COMMIT_MSG" ]; then
-  echo "❌ No message generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
+  echo " No message generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
   exit 1
 fi
 
@@ -124,27 +124,27 @@ echo ""
 # ── Action menu ────────────────────────────────────────────────────────────────
 ACTION=$(gum choose \
   --header "What would you like to do?" \
-  "✅  Stage all & commit" \
-  "📌  Commit staged only" \
-  "✏️  Edit then commit" \
-  "🔄  Regenerate" \
-  "❌  Abort")
+  "  Stage all & commit" \
+  "󰐃  Commit staged only" \
+  "󰏫  Edit then commit" \
+  "󰑐  Regenerate" \
+  "  Abort")
 
 case "$ACTION" in
-"✅  Stage all & commit")
+"  Stage all & commit")
   git add -A
   printf '%s\n' "$COMMIT_MSG" | git commit -F -
   echo ""
-  gum style "✅  Committed!"
+  gum style "  Committed!"
   git log --oneline -1
   ;;
-"📌  Commit staged only")
+"󰐃  Commit staged only")
   printf '%s\n' "$COMMIT_MSG" | git commit -F -
   echo ""
-  gum style "✅  Committed (staged only)!"
+  gum style "  Committed (staged only)!"
   git log --oneline -1
   ;;
-"✏️   Edit then commit")
+"󰏫   Edit then commit")
   TMPFILE=$(mktemp)
   printf '%s\n' "$COMMIT_MSG" >"$TMPFILE"
   "${EDITOR:-nvim}" "$TMPFILE"
@@ -155,16 +155,16 @@ case "$ACTION" in
     [ "$STAGE" = "Stage all" ] && git add -A
     printf '%s\n' "$EDITED" | git commit -F -
     echo ""
-    gum style "✅  Committed!"
+    gum style "  Committed!"
     git log --oneline -1
   else
     echo "Aborted (empty message)."
   fi
   ;;
-"🔄  Regenerate")
+"󰑐  Regenerate")
   exec "$0"
   ;;
-"❌  Abort")
+"  Abort")
   echo "Aborted."
   exit 0
   ;;

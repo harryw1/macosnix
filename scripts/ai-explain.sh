@@ -42,7 +42,7 @@ fi
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "🦙 Starting Ollama..."
+  echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
@@ -103,7 +103,7 @@ payload = {
 print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 
-gum spin --spinner dot --title "🦙  Thinking with $MODEL..." -- \
+gum spin --spinner dot --title "󰚩  Thinking with $MODEL..." -- \
   sh -c "curl -s http://localhost:11434/api/generate \
     -H 'Content-Type: application/json' \
     -d @$PAYLOAD_FILE > $MSG_FILE 2>/dev/null"
@@ -121,7 +121,7 @@ EXPLANATION=$(printf '%s' "$RAW" | awk '
   ' | sed 's/^[[:space:]]*//')
 
 if [ -z "$EXPLANATION" ]; then
-  echo "❌ No explanation generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
+  echo " No explanation generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
   exit 1
 fi
 

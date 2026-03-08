@@ -16,7 +16,7 @@ let
     fi
 
     if [ -z "$PROJECT_NAME" ]; then
-      echo "❌ Project name is required."
+      echo " Project name is required."
       exit 1
     fi
 
@@ -331,7 +331,7 @@ EOF
     git commit -m "Initial commit (scaffolded by pyinit)" -q
 
     echo ""
-    $GUM style --border double --padding "1 2" --margin "1 2" "✅ Project $PROJECT_NAME ($TEMPLATE) ready!"
+    $GUM style --border double --padding "1 2" --margin "1 2" " Project $PROJECT_NAME ($TEMPLATE) ready!"
   '';
 
   # ── mdconvert: markdown → docx / html / pdf (python-docx + WeasyPrint) ──────

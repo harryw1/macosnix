@@ -8,7 +8,7 @@ MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
 
 # ── Guard: must be inside a git repo ──────────────────────────────────────────
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
-  echo "❌ Not inside a git repository."
+  echo " Not inside a git repository."
   exit 1
 fi
 
@@ -32,14 +32,14 @@ if [ -z "$BASE_BRANCH" ]; then
 fi
 
 if [ -z "$BASE_BRANCH" ]; then
-  echo "❌ Could not determine base branch. Override with: AIPR_BASE=main aipr"
+  echo " Could not determine base branch. Override with: AIPR_BASE=main aipr"
   exit 1
 fi
 
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 if [ "$CURRENT_BRANCH" = "$BASE_BRANCH" ]; then
-  echo "❌ Already on base branch ($BASE_BRANCH). Checkout a feature branch first."
+  echo " Already on base branch ($BASE_BRANCH). Checkout a feature branch first."
   exit 1
 fi
 
@@ -47,7 +47,7 @@ fi
 COMMITS=$(git log --oneline "${BASE_BRANCH}..HEAD" 2>/dev/null || true)
 
 if [ -z "$COMMITS" ]; then
-  echo "❌ No commits found between $BASE_BRANCH and $CURRENT_BRANCH."
+  echo " No commits found between $BASE_BRANCH and $CURRENT_BRANCH."
   exit 1
 fi
 
@@ -55,7 +55,7 @@ DIFF=$(git diff "${BASE_BRANCH}...HEAD" 2>/dev/null | head -c 12000 || true)
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
 if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "🦙 Starting Ollama..."
+  echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
@@ -116,7 +116,7 @@ payload = {
 print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 
-gum spin --spinner dot --title "🦙  Generating PR description with $MODEL..." -- \
+gum spin --spinner dot --title "󰚩  Generating PR description with $MODEL..." -- \
   sh -c "curl -s http://localhost:11434/api/generate \
     -H 'Content-Type: application/json' \
     -d @$PAYLOAD_FILE > $MSG_FILE 2>/dev/null"
@@ -134,7 +134,7 @@ PR_TEXT=$(printf '%s' "$RAW" | awk '
   ')
 
 if [ -z "$PR_TEXT" ]; then
-  echo "❌ No description generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
+  echo " No description generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
   exit 1
 fi
 
@@ -159,28 +159,28 @@ fi
 gum style \
   --width "$TERM_WIDTH" \
   --border double --padding "1 2" \
-  "$(printf '📋  %s\n\n%s' "$PR_TITLE" "$PR_BODY")"
+  "$(printf '󰆏  %s\n\n%s' "$PR_TITLE" "$PR_BODY")"
 echo ""
 
 # ── Action menu ────────────────────────────────────────────────────────────────
 ACTION=$(gum choose \
   --header "What would you like to do?" \
-  "🚀  Push & open PR with gh" \
-  "📋  Copy to clipboard" \
-  "✏️  Edit then open PR" \
-  "🔄  Regenerate" \
-  "❌  Abort")
+  "  Push & open PR with gh" \
+  "󰆏  Copy to clipboard" \
+  "󰏫  Edit then open PR" \
+  "󰑐  Regenerate" \
+  "  Abort")
 
 case "$ACTION" in
-"🚀  Push & open PR with gh")
+"  Push & open PR with gh")
   git push -u origin "$CURRENT_BRANCH"
   gh pr create --title "$PR_TITLE" --body "$PR_BODY"
   ;;
-"📋  Copy to clipboard")
+"󰆏  Copy to clipboard")
   printf 'Title: %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | pbcopy
-  gum style "✅  Copied to clipboard!"
+  gum style "  Copied to clipboard!"
   ;;
-"✏️  Edit then open PR")
+"󰏫  Edit then open PR")
   TMPFILE=$(mktemp)
   printf 'TITLE: %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" >"$TMPFILE"
   "${EDITOR:-nvim}" "$TMPFILE"
@@ -194,10 +194,10 @@ case "$ACTION" in
     echo "Aborted (empty title)."
   fi
   ;;
-"🔄  Regenerate")
+"󰑐  Regenerate")
   exec "$0"
   ;;
-"❌  Abort")
+"  Abort")
   echo "Aborted."
   exit 0
   ;;
