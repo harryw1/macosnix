@@ -56,34 +56,34 @@ except ImportError:
 
 PALETTES: dict[str, dict[str, str]] = {
     "report": {
-        "primary":       "#203354",
-        "secondary":     "#4A6572",
-        "accent":        "#F9AA33",
-        "text":          "#333333",
-        "code_bg":       "#F5F5F5",
-        "code_border":   "#E0E0E0",
+        "primary": "#203354",
+        "secondary": "#4A6572",
+        "accent": "#F9AA33",
+        "text": "#333333",
+        "code_bg": "#F5F5F5",
+        "code_border": "#E0E0E0",
         "table_head_bg": "#203354",
         "table_head_fg": "#FFFFFF",
         "table_alt_row": "#F2F4F6",
-        "table_border":  "#D0D7DE",
-        "rule_color":    "#4A6572",
-        "quote_color":   "#4A6572",
-        "link_color":    "#203354",
+        "table_border": "#D0D7DE",
+        "rule_color": "#4A6572",
+        "quote_color": "#4A6572",
+        "link_color": "#203354",
     },
     "notes": {
-        "primary":       "#1A1A1A",
-        "secondary":     "#444444",
-        "accent":        "#1565C0",
-        "text":          "#1A1A1A",
-        "code_bg":       "#F5F5F5",
-        "code_border":   "#D0D0D0",
+        "primary": "#1A1A1A",
+        "secondary": "#444444",
+        "accent": "#1565C0",
+        "text": "#1A1A1A",
+        "code_bg": "#F5F5F5",
+        "code_border": "#D0D0D0",
         "table_head_bg": "#444444",
         "table_head_fg": "#FFFFFF",
         "table_alt_row": "#F7F7F7",
-        "table_border":  "#D0D0D0",
-        "rule_color":    "#AAAAAA",
-        "quote_color":   "#666666",
-        "link_color":    "#1565C0",
+        "table_border": "#D0D0D0",
+        "rule_color": "#AAAAAA",
+        "quote_color": "#666666",
+        "link_color": "#1565C0",
     },
 }
 
@@ -92,10 +92,10 @@ PALETTES: dict[str, dict[str, str]] = {
 _YAML_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 DEFAULT_META: dict[str, str] = {
-    "author":       "Harrison Weiss",
-    "email":        "harrisonrweiss1@gmail.com",
+    "author": "Harrison Weiss",
+    "email": "harrisonrweiss1@gmail.com",
     "organization": "",
-    "date":         date.today().strftime("%B %-d, %Y"),
+    "date": date.today().strftime("%B %-d, %Y"),
 }
 
 
@@ -104,7 +104,7 @@ def parse_front_matter(text: str) -> tuple[dict, str]:
     if not m:
         return {}, text
     meta = yaml.safe_load(m.group(1)) or {}
-    return meta, text[m.end():]
+    return meta, text[m.end() :]
 
 
 # ── Markdown → HTML ────────────────────────────────────────────────────────────
@@ -133,6 +133,7 @@ def md_to_html(body: str) -> str:
 
 # ── Colour helpers ─────────────────────────────────────────────────────────────
 
+
 def _hex(color: str) -> str:
     """Strip leading # from a hex colour string."""
     return color.lstrip("#")
@@ -145,6 +146,7 @@ def _rgb(color: str):
 
 
 # ── docx XML helpers ───────────────────────────────────────────────────────────
+
 
 def _para_bottom_border(para, color: str, sz: int = 8) -> None:
     """Add a bottom border line under a paragraph (replicates LaTeX \\titlerule)."""
@@ -218,6 +220,7 @@ def _add_hyperlink(para, url: str, text: str, palette: dict) -> None:
 
 # ── Inline walker ──────────────────────────────────────────────────────────────
 
+
 def _walk_inline(
     para,
     node,
@@ -257,10 +260,10 @@ def _walk_inline(
             run.underline = True
         return
 
-    new_bold   = bold   or tag in ("strong", "b")
+    new_bold = bold or tag in ("strong", "b")
     new_italic = italic or tag in ("em", "i")
     new_strike = strike or tag in ("del", "s", "strike")
-    new_mono   = mono   or tag == "code"
+    new_mono = mono or tag == "code"
 
     for child in node.children:
         _walk_inline(para, child, palette, new_bold, new_italic, new_strike, new_mono)
@@ -268,7 +271,10 @@ def _walk_inline(
 
 # ── List walker ────────────────────────────────────────────────────────────────
 
-def _walk_list(doc, list_node, palette: dict, template: str, level: int = 0, ordered: bool = False) -> None:
+
+def _walk_list(
+    doc, list_node, palette: dict, template: str, level: int = 0, ordered: bool = False
+) -> None:
     style = "List Number" if ordered else "List Bullet"
 
     for child in list_node.children:
@@ -284,8 +290,8 @@ def _walk_list(doc, list_node, palette: dict, template: str, level: int = 0, ord
                 inline_parts.append(item)
 
         para = doc.add_paragraph(style=style)
-        para.paragraph_format.left_indent  = Inches(0.25 * (level + 1))
-        para.paragraph_format.space_after  = Pt(2)
+        para.paragraph_format.left_indent = Inches(0.25 * (level + 1))
+        para.paragraph_format.space_after = Pt(2)
         para.paragraph_format.space_before = Pt(0)
         for part in inline_parts:
             # Skip whitespace-only text nodes — BeautifulSoup leaves a trailing
@@ -311,7 +317,7 @@ def _build_table(doc, table_node: Tag, palette: dict) -> None:
     tbody = table_node.find("tbody")
 
     header_rows: list[list[Tag]] = []
-    body_rows:   list[list[Tag]] = []
+    body_rows: list[list[Tag]] = []
 
     if thead:
         for tr in thead.find_all("tr"):
@@ -326,10 +332,10 @@ def _build_table(doc, table_node: Tag, palette: dict) -> None:
         if not all_trs:
             return
         header_rows = [all_trs[0].find_all(["th", "td"])]
-        body_rows   = [tr.find_all(["th", "td"]) for tr in all_trs[1:]]
+        body_rows = [tr.find_all(["th", "td"]) for tr in all_trs[1:]]
 
     all_rows = header_rows + body_rows
-    n_head   = len(header_rows)
+    n_head = len(header_rows)
     if not all_rows:
         return
 
@@ -348,7 +354,7 @@ def _build_table(doc, table_node: Tag, palette: dict) -> None:
 
     for ri, cell_nodes in enumerate(all_rows):
         is_header = ri < n_head
-        body_idx  = ri - n_head
+        body_idx = ri - n_head
 
         row = table.rows[ri]
         for ci in range(n_cols):
@@ -364,8 +370,8 @@ def _build_table(doc, table_node: Tag, palette: dict) -> None:
                     for child in cell_nodes[ci].children:
                         _walk_inline(para, child, palette)
                     for run in para.runs:
-                        run.bold           = True
-                        run.font.size      = Pt(10)
+                        run.bold = True
+                        run.font.size = Pt(10)
                         run.font.color.rgb = _rgb(palette["table_head_fg"])
             else:
                 if body_idx % 2 == 1:
@@ -381,11 +387,12 @@ def _build_table(doc, table_node: Tag, palette: dict) -> None:
 
     # Spacing after table
     space_para = doc.add_paragraph()
-    space_para.paragraph_format.space_after  = Pt(8)
+    space_para.paragraph_format.space_after = Pt(8)
     space_para.paragraph_format.space_before = Pt(0)
 
 
 # ── Block walker ───────────────────────────────────────────────────────────────
+
 
 def _walk_block(doc, parent, palette: dict, template: str) -> None:
     for node in parent.children:
@@ -404,31 +411,38 @@ def _walk_block(doc, parent, palette: dict, template: str) -> None:
         # ── Headings ────────────────────────────────────────────────────────
         if tag in ("h1", "h2", "h3", "h4", "h5", "h6"):
             level = int(tag[1])
-            para  = doc.add_paragraph()
+            para = doc.add_paragraph()
 
-            spacings = {1: (18, 6), 2: (14, 4), 3: (10, 4), 4: (8, 2), 5: (6, 2), 6: (4, 2)}
+            spacings = {
+                1: (18, 6),
+                2: (14, 4),
+                3: (10, 4),
+                4: (8, 2),
+                5: (6, 2),
+                6: (4, 2),
+            }
             pre, post = spacings.get(level, (6, 4))
             para.paragraph_format.space_before = Pt(pre)
-            para.paragraph_format.space_after  = Pt(post)
+            para.paragraph_format.space_after = Pt(post)
 
             run = para.add_run(node.get_text(strip=True))
 
             if level == 1:
-                run.font.size      = Pt(20)
-                run.bold           = True
+                run.font.size = Pt(20)
+                run.bold = True
                 run.font.color.rgb = _rgb(palette["primary"])
                 _para_bottom_border(para, palette["secondary"], sz=8)
             elif level == 2:
-                run.font.size      = Pt(16)
-                run.bold           = True
+                run.font.size = Pt(16)
+                run.bold = True
                 run.font.color.rgb = _rgb(palette["secondary"])
             elif level == 3:
-                run.font.size      = Pt(13)
-                run.bold           = True
+                run.font.size = Pt(13)
+                run.bold = True
                 run.font.color.rgb = _rgb(palette["secondary"])
             else:
-                run.font.size      = Pt(11)
-                run.bold           = True
+                run.font.size = Pt(11)
+                run.bold = True
                 run.font.color.rgb = _rgb(palette["text"])
 
         # ── Paragraph ───────────────────────────────────────────────────────
@@ -455,8 +469,8 @@ def _walk_block(doc, parent, palette: dict, template: str) -> None:
                     for gc in child.children:
                         _walk_inline(para, gc, palette)
 
-                para.paragraph_format.left_indent  = Inches(0.4)
-                para.paragraph_format.space_after   = Pt(4)
+                para.paragraph_format.left_indent = Inches(0.4)
+                para.paragraph_format.space_after = Pt(4)
                 # Colour existing runs
                 for run in para.runs:
                     run.font.color.rgb = _rgb(palette["quote_color"])
@@ -468,8 +482,8 @@ def _walk_block(doc, parent, palette: dict, template: str) -> None:
             text = (code_node or node).get_text()
             para = doc.add_paragraph()
             para.paragraph_format.space_before = Pt(4)
-            para.paragraph_format.space_after  = Pt(4)
-            para.paragraph_format.left_indent  = Inches(0.2)
+            para.paragraph_format.space_after = Pt(4)
+            para.paragraph_format.left_indent = Inches(0.2)
             run = para.add_run(text)
             run.font.name = "Courier New"
             run.font.size = Pt(9)
@@ -479,7 +493,7 @@ def _walk_block(doc, parent, palette: dict, template: str) -> None:
         elif tag == "hr":
             para = doc.add_paragraph()
             para.paragraph_format.space_before = Pt(8)
-            para.paragraph_format.space_after  = Pt(8)
+            para.paragraph_format.space_after = Pt(8)
             _para_bottom_border(para, palette["rule_color"], sz=6)
 
         # ── Table ────────────────────────────────────────────────────────────
@@ -500,15 +514,16 @@ def _walk_block(doc, parent, palette: dict, template: str) -> None:
 
 # ── DOCX builder ───────────────────────────────────────────────────────────────
 
+
 def build_docx(meta: dict, html: str, palette: dict, template: str) -> bytes:
     doc = Document()
 
     # Page margins (1 in on all sides)
     for section in doc.sections:
-        section.top_margin    = Inches(1)
+        section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
-        section.left_margin   = Inches(1)
-        section.right_margin  = Inches(1)
+        section.left_margin = Inches(1)
+        section.right_margin = Inches(1)
 
     # ── Title / header block ─────────────────────────────────────────────────
     if meta.get("title"):
@@ -516,30 +531,30 @@ def build_docx(meta: dict, html: str, palette: dict, template: str) -> bytes:
             # Decorative top rule
             rule = doc.add_paragraph()
             rule.paragraph_format.space_before = Pt(0)
-            rule.paragraph_format.space_after  = Pt(10)
+            rule.paragraph_format.space_after = Pt(10)
             _para_bottom_border(rule, palette["secondary"], sz=18)
 
             # Title
             tp = doc.add_paragraph()
             tr = tp.add_run(meta["title"])
-            tr.font.size      = Pt(26)
-            tr.bold           = True
+            tr.font.size = Pt(26)
+            tr.bold = True
             tr.font.color.rgb = _rgb(palette["primary"])
             tp.paragraph_format.space_before = Pt(4)
-            tp.paragraph_format.space_after  = Pt(4)
+            tp.paragraph_format.space_after = Pt(4)
 
             # Subtitle
             if meta.get("subtitle"):
                 sp = doc.add_paragraph()
                 sr = sp.add_run(meta["subtitle"])
-                sr.font.size      = Pt(15)
+                sr.font.size = Pt(15)
                 sr.font.color.rgb = _rgb(palette["secondary"])
                 sp.paragraph_format.space_after = Pt(8)
 
             # Date
             dp = doc.add_paragraph()
             dr = dp.add_run(str(meta.get("date", DEFAULT_META["date"])))
-            dr.font.size      = Pt(11)
+            dr.font.size = Pt(11)
             dr.font.color.rgb = _rgb(palette["text"])
             dp.paragraph_format.space_after = Pt(4)
 
@@ -554,7 +569,7 @@ def build_docx(meta: dict, html: str, palette: dict, template: str) -> bytes:
             if parts:
                 ip = doc.add_paragraph()
                 ir = ip.add_run("  ·  ".join(parts))
-                ir.font.size      = Pt(10)
+                ir.font.size = Pt(10)
                 ir.font.color.rgb = _rgb(palette["secondary"])
                 ip.paragraph_format.space_after = Pt(18)
 
@@ -563,8 +578,8 @@ def build_docx(meta: dict, html: str, palette: dict, template: str) -> bytes:
         else:  # notes
             tp = doc.add_paragraph()
             tr = tp.add_run(meta["title"])
-            tr.font.size      = Pt(20)
-            tr.bold           = True
+            tr.font.size = Pt(20)
+            tr.bold = True
             _para_bottom_border(tp, palette["secondary"], sz=6)
             tp.paragraph_format.space_after = Pt(4)
 
@@ -575,7 +590,7 @@ def build_docx(meta: dict, html: str, palette: dict, template: str) -> bytes:
                 parts.append(author)
             ip = doc.add_paragraph()
             ir = ip.add_run("  ·  ".join(parts))
-            ir.font.size      = Pt(10)
+            ir.font.size = Pt(10)
             ir.font.color.rgb = _rgb(palette["secondary"])
             ip.paragraph_format.space_after = Pt(12)
 
@@ -590,18 +605,7 @@ def build_docx(meta: dict, html: str, palette: dict, template: str) -> bytes:
 
 # ── HTML / CSS builder ─────────────────────────────────────────────────────────
 
-def _css(palette: dict, template: str) -> str:
-    p = palette
-    if template == "report":
-        body_font    = "Palatino, Georgia, 'Times New Roman', serif"
-        heading_font = "'Arial', 'Helvetica Neue', Helvetica, sans-serif"
-        mono_font    = "'JetBrains Mono', 'Courier New', Courier, monospace"
-    else:
-        body_font    = "'Times New Roman', Times, serif"
-        heading_font = "'Arial', 'Helvetica Neue', Helvetica, sans-serif"
-        mono_font    = "'Courier New', Courier, monospace"
-
-    return f"""
+_BASE_CSS = """
 /* ── Reset ─────────────────────────────────────────────── */
 *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
@@ -610,7 +614,7 @@ body {{
   font-family: {body_font};
   font-size: 11pt;
   line-height: 1.65;
-  color: {p['text']};
+  color: {text};
   max-width: 820px;
   margin: 0 auto;
   padding: 2.5rem 3rem;
@@ -620,33 +624,33 @@ body {{
 .title-block {{
   margin-bottom: 2.2rem;
   padding-bottom: 1.2rem;
-  border-bottom: 2px solid {p['secondary']};
+  border-bottom: 2px solid {secondary};
 }}
 .title-block .doc-title {{
   font-family: {heading_font};
   font-size: 26pt;
   font-weight: 700;
-  color: {p['primary']};
+  color: {primary};
   line-height: 1.15;
   margin-bottom: 0.25em;
 }}
 .title-block .doc-subtitle {{
   font-family: {heading_font};
   font-size: 15pt;
-  color: {p['secondary']};
+  color: {secondary};
   margin-bottom: 0.5em;
 }}
 .title-block .doc-meta {{
   font-size: 10pt;
-  color: {p['secondary']};
+  color: {secondary};
   margin-top: 0.35em;
 }}
 
 /* Notes variant */
 .title-block.notes .doc-title {{
   font-size: 20pt;
-  color: {p['primary']};
-  border-bottom: 1px solid {p['secondary']};
+  color: {primary};
+  border-bottom: 1px solid {secondary};
   padding-bottom: 0.3em;
   margin-bottom: 0.3em;
 }}
@@ -660,19 +664,19 @@ h1, h2, h3, h4, h5, h6 {{
 }}
 h1 {{
   font-size: 19pt;
-  color: {p['primary']};
-  border-bottom: 2px solid {p['secondary']};
+  color: {primary};
+  border-bottom: 2px solid {secondary};
   padding-bottom: 0.2em;
 }}
-h2 {{ font-size: 15pt; color: {p['secondary']}; }}
-h3 {{ font-size: 12pt; color: {p['secondary']}; }}
-h4, h5, h6 {{ font-size: 11pt; color: {p['text']}; }}
+h2 {{ font-size: 15pt; color: {secondary}; }}
+h3 {{ font-size: 12pt; color: {secondary}; }}
+h4, h5, h6 {{ font-size: 11pt; color: {text}; }}
 
 /* ── Body text ──────────────────────────────────────────── */
 p {{ margin-bottom: 0.85em; }}
 
 /* ── Links ──────────────────────────────────────────────── */
-a {{ color: {p['link_color']}; text-decoration: underline; }}
+a {{ color: {link_color}; text-decoration: underline; }}
 a:hover {{ opacity: 0.8; }}
 
 /* ── Tables ─────────────────────────────────────────────── */
@@ -683,13 +687,13 @@ table {{
   font-size: 10pt;
 }}
 thead tr {{
-  background: {p['table_head_bg']};
-  color: {p['table_head_fg']};
+  background: {table_head_bg};
+  color: {table_head_fg};
 }}
 th, td {{
   padding: 8px 13px;
   text-align: left;
-  border: 1px solid {p['table_border']};
+  border: 1px solid {table_border};
   vertical-align: top;
 }}
 th {{
@@ -698,21 +702,21 @@ th {{
   font-size: 9.5pt;
   letter-spacing: 0.02em;
 }}
-tbody tr:nth-child(even) {{ background: {p['table_alt_row']}; }}
+tbody tr:nth-child(even) {{ background: {table_alt_row}; }}
 
 /* ── Code ───────────────────────────────────────────────── */
 code {{
   font-family: {mono_font};
   font-size: 9pt;
-  background: {p['code_bg']};
-  border: 1px solid {p['code_border']};
+  background: {code_bg};
+  border: 1px solid {code_border};
   padding: 0.1em 0.35em;
   border-radius: 3px;
 }}
 pre {{
-  background: {p['code_bg']};
-  border: 1px solid {p['code_border']};
-  border-left: 3px solid {p['secondary']};
+  background: {code_bg};
+  border: 1px solid {code_border};
+  border-left: 3px solid {secondary};
   padding: 1em 1.2em;
   overflow-x: auto;
   margin: 1em 0;
@@ -729,10 +733,10 @@ pre code {{
 
 /* ── Blockquote ─────────────────────────────────────────── */
 blockquote {{
-  border-left: 3px solid {p['quote_color']};
+  border-left: 3px solid {quote_color};
   margin: 1em 0;
   padding: 0.5em 1.1em;
-  color: {p['quote_color']};
+  color: {quote_color};
   font-style: italic;
 }}
 
@@ -744,7 +748,7 @@ li > ul, li > ol {{ margin-top: 0.25em; }}
 /* ── HR ─────────────────────────────────────────────────── */
 hr {{
   border: none;
-  border-top: 1px solid {p['rule_color']};
+  border-top: 1px solid {rule_color};
   margin: 1.6em 0;
 }}
 
@@ -752,7 +756,7 @@ hr {{
 @media print {{
   body {{ padding: 0; max-width: none; font-size: 10.5pt; }}
   pre {{ white-space: pre-wrap; word-break: break-all; }}
-  a {{ color: {p['link_color']}; }}
+  a {{ color: {link_color}; }}
   h1, h2, h3 {{ page-break-after: avoid; }}
   table, pre, blockquote {{ page-break-inside: avoid; }}
   @page {{ margin: 1in; }}
@@ -760,9 +764,24 @@ hr {{
 """
 
 
+def _css(palette: dict, template: str) -> str:
+    if template == "report":
+        body_font = "Palatino, Georgia, 'Times New Roman', serif"
+        heading_font = "'Arial', 'Helvetica Neue', Helvetica, sans-serif"
+        mono_font = "'JetBrains Mono', 'Courier New', Courier, monospace"
+    else:
+        body_font = "'Times New Roman', Times, serif"
+        heading_font = "'Arial', 'Helvetica Neue', Helvetica, sans-serif"
+        mono_font = "'Courier New', Courier, monospace"
+
+    return _BASE_CSS.format(
+        body_font=body_font, heading_font=heading_font, mono_font=mono_font, **palette
+    )
+
+
 def build_html(meta: dict, html_body: str, palette: dict, template: str) -> str:
     title_str = meta.get("title", "")
-    css_str   = _css(palette, template)
+    css_str = _css(palette, template)
 
     # Build title block
     tb = ""
@@ -770,11 +789,12 @@ def build_html(meta: dict, html_body: str, palette: dict, template: str) -> str:
         cls = "title-block notes" if template == "notes" else "title-block"
         sub = (
             f'<div class="doc-subtitle">{meta["subtitle"]}</div>'
-            if meta.get("subtitle") else ""
+            if meta.get("subtitle")
+            else ""
         )
-        date_str   = str(meta.get("date", DEFAULT_META["date"]))
+        date_str = str(meta.get("date", DEFAULT_META["date"]))
         author_str = meta.get("author", DEFAULT_META["author"])
-        org_str    = meta.get("organization", DEFAULT_META["organization"])
+        org_str = meta.get("organization", DEFAULT_META["organization"])
 
         if template == "report":
             meta_parts = [date_str]
@@ -819,12 +839,14 @@ def build_html(meta: dict, html_body: str, palette: dict, template: str) -> str:
 
 # ── PDF builder ────────────────────────────────────────────────────────────────
 
+
 def build_pdf(meta: dict, html_body: str, palette: dict, template: str) -> bytes:
     full_html = build_html(meta, html_body, palette, template)
     return HTML(string=full_html).write_pdf()
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -843,13 +865,26 @@ Front-matter (YAML between --- delimiters):
   title, subtitle, author, email, organization, date, template
 """,
     )
-    parser.add_argument("input",            help="Input Markdown file")
-    parser.add_argument("output", nargs="?", help="Output file (format inferred from extension)")
-    parser.add_argument("-f", "--format",   choices=["docx", "pdf", "html"],
-                        help="Output format (inferred from output extension if omitted)")
-    parser.add_argument("-t", "--template", choices=["report", "notes"], default=None,
-                        help="Document style: 'report' (default) or 'notes'")
-    parser.add_argument("-o", "--out",      help="Output file path (alternative to positional arg)")
+    parser.add_argument("input", help="Input Markdown file")
+    parser.add_argument(
+        "output", nargs="?", help="Output file (format inferred from extension)"
+    )
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=["docx", "pdf", "html"],
+        help="Output format (inferred from output extension if omitted)",
+    )
+    parser.add_argument(
+        "-t",
+        "--template",
+        choices=["report", "notes"],
+        default=None,
+        help="Document style: 'report' (default) or 'notes'",
+    )
+    parser.add_argument(
+        "-o", "--out", help="Output file path (alternative to positional arg)"
+    )
 
     args = parser.parse_args()
 
@@ -858,8 +893,8 @@ Front-matter (YAML between --- delimiters):
         print(f"mdconvert: error: '{in_path}' not found", file=sys.stderr)
         sys.exit(1)
 
-    raw          = in_path.read_text(encoding="utf-8")
-    meta, body   = parse_front_matter(raw)
+    raw = in_path.read_text(encoding="utf-8")
+    meta, body = parse_front_matter(raw)
 
     # Fill in defaults
     for k, v in DEFAULT_META.items():
@@ -869,9 +904,9 @@ Front-matter (YAML between --- delimiters):
     out_path_str = args.out or args.output
     if out_path_str:
         out_path = Path(out_path_str)
-        fmt      = args.format or out_path.suffix.lstrip(".")
+        fmt = args.format or out_path.suffix.lstrip(".")
     elif args.format:
-        fmt      = args.format
+        fmt = args.format
         out_path = in_path.with_suffix(f".{fmt}")
     else:
         parser.error("specify --format/-f or provide an output file path")
@@ -883,7 +918,7 @@ Front-matter (YAML between --- delimiters):
 
     # Template: CLI flag > front-matter key > default
     template = args.template or meta.get("template", "report")
-    palette  = PALETTES[template]
+    palette = PALETTES[template]
 
     # Convert
     html_body = md_to_html(body)
@@ -891,7 +926,9 @@ Front-matter (YAML between --- delimiters):
     if fmt == "docx":
         out_path.write_bytes(build_docx(meta, html_body, palette, template))
     elif fmt == "html":
-        out_path.write_text(build_html(meta, html_body, palette, template), encoding="utf-8")
+        out_path.write_text(
+            build_html(meta, html_body, palette, template), encoding="utf-8"
+        )
     elif fmt == "pdf":
         out_path.write_bytes(build_pdf(meta, html_body, palette, template))
 
