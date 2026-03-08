@@ -164,7 +164,7 @@ case "$ACTION" in
   fi
   ;;
 "󰑐  Regenerate")
-  exec "$0"
+  exec bash "${BASH_SOURCE[0]}"
   ;;
 "  Abort")
   echo "Aborted."

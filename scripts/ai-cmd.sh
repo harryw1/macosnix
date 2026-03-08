@@ -179,7 +179,7 @@ case "$ACTION" in
   fi
   ;;
 "󰑐  Regenerate")
-  exec "$0" "$QUERY"
+  exec bash "${BASH_SOURCE[0]}" "$QUERY"
   ;;
 "  Abort")
   echo "Aborted."

@@ -156,7 +156,7 @@ ACTION=$(gum choose \
 
 case "$ACTION" in
 "󰚩  Ask another question")
-  exec "$0"
+  exec bash "${BASH_SOURCE[0]}"
   ;;
 "󰆏  Copy answer to clipboard")
   printf '%s' "$ANSWER" | pbcopy

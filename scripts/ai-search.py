@@ -4,6 +4,9 @@
 # dependencies = [
 #     "sqlite-vec",
 #     "requests",
+#     "pypdf",
+#     "python-docx",
+#     "openpyxl",
 # ]
 # ///
 import argparse
@@ -32,7 +35,9 @@ CHUNK_SIZE = 4000
 OVERLAP = 200
 
 # Additional pure-text extensions that mimetypes might miss
-TEXT_EXTS = {".nix", ".md", ".toml", ".yml", ".yaml", ".sh", ".bash", ".zsh", ".json", ".txt", ".py", ".rs", ".go", ".js", ".ts", ".jsx", ".tsx", ".css", ".html"}
+TEXT_EXTS = {".nix", ".md", ".toml", ".yml", ".yaml", ".sh", ".bash", ".zsh", ".json", ".txt", ".py", ".rs", ".go", ".js", ".ts", ".jsx", ".tsx", ".css", ".html", ".csv"}
+# Binary formats we know how to extract text from
+BINARY_EXTS = {".pdf", ".docx", ".xlsx"}
 IGNORE_DIRS = {".git", "node_modules", "vendor", "__pycache__", ".venv", "dist", "build"}
 
 
@@ -52,11 +57,76 @@ def get_embedding(text: str) -> list[float]:
 
 
 def is_text_file(filepath: Path) -> bool:
-    """Check if a file is likely a text file."""
-    if filepath.suffix.lower() in TEXT_EXTS:
+    """Check if a file is a supported text or binary format."""
+    ext = filepath.suffix.lower()
+    if ext in TEXT_EXTS or ext in BINARY_EXTS:
         return True
     mime, _ = mimetypes.guess_type(str(filepath))
     return mime is not None and mime.startswith("text/")
+
+
+def extract_text(path: Path) -> str | None:
+    """Extract plain text from a file, dispatching on extension for binary formats."""
+    ext = path.suffix.lower()
+
+    # Plain-text formats — read directly
+    if ext in TEXT_EXTS:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            return None
+
+    # PDF — extract page-by-page, prefixed with page numbers for context
+    if ext == ".pdf":
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(str(path))
+            pages = []
+            for i, page in enumerate(reader.pages, 1):
+                text = page.extract_text()
+                if text and text.strip():
+                    pages.append(f"[Page {i}]\n{text.strip()}")
+            return "\n\n".join(pages) if pages else None
+        except Exception:
+            return None
+
+    # DOCX — extract paragraphs and table cells
+    if ext == ".docx":
+        try:
+            from docx import Document
+            doc = Document(str(path))
+            parts = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    parts.append(para.text.strip())
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = "\t".join(cell.text.strip() for cell in row.cells)
+                    if row_text.strip():
+                        parts.append(row_text)
+            return "\n".join(parts) if parts else None
+        except Exception:
+            return None
+
+    # XLSX — extract each sheet with its name and tab-separated rows
+    if ext == ".xlsx":
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(str(path), read_only=True, data_only=True)
+            parts = []
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                parts.append(f"[Sheet: {sheet_name}]")
+                for row in ws.iter_rows(values_only=True):
+                    row_text = "\t".join("" if c is None else str(c) for c in row)
+                    if row_text.strip():
+                        parts.append(row_text)
+            return "\n".join(parts) if parts else None
+        except Exception:
+            return None
+
+    return None
 
 
 def chunk_text(text: str, chunk_size=CHUNK_SIZE, overlap=OVERLAP) -> list[str]:
@@ -136,10 +206,8 @@ def index_directory(conn: sqlite3.Connection, directory: str):
         if filepath_str in existing_files and existing_files[filepath_str] >= mtime:
             continue
 
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-        except UnicodeDecodeError:
+        content = extract_text(path)
+        if content is None:
             continue
 
         # If it was modified, delete the old chunks first

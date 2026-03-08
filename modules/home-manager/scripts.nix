@@ -334,6 +334,130 @@ EOF
     $GUM style --border double --padding "1 2" --margin "1 2" " Project $PROJECT_NAME ($TEMPLATE) ready!"
   '';
 
+  report-init = pkgs.writeShellScriptBin "report-init" ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # Interactive research / report project scaffolding using gum
+
+    # 1. Project name
+    PROJECT_NAME="''${1:-}"
+    if [ -z "$PROJECT_NAME" ]; then
+      PROJECT_NAME=$(gum input \
+        --placeholder "Project name (e.g., q4-sales-analysis)" \
+        --header "󰈙  report-init — name your project")
+    fi
+    [ -z "$PROJECT_NAME" ] && echo "Aborted." && exit 1
+
+    # 2. Project type
+    PROJECT_TYPE=$(gum choose \
+      --header "Project type?" \
+      "Research" \
+      "Analysis" \
+      "Report")
+
+    # 3. Git init?
+    DO_GIT=false
+    if gum confirm --default=true "Initialise a git repository?"; then
+      DO_GIT=true
+    fi
+
+    # 4. Create directory and scaffold
+    if [ -d "$PROJECT_NAME" ]; then
+      if ! gum confirm "Directory '$PROJECT_NAME' already exists. Continue?"; then
+        exit 1
+      fi
+    fi
+
+    mkdir -p "$PROJECT_NAME"
+    cd "$PROJECT_NAME" || exit
+
+    gum spin --spinner dot --title "Scaffolding folder structure..." -- \
+      bash -c 'mkdir -p data/raw data/processed figures reports/drafts notebooks src references'
+
+    # 5. .gitignore
+    cat <<'GITIGNORE' > .gitignore
+.DS_Store
+*.pyc
+__pycache__/
+.venv/
+.env
+*.egg-info/
+.ruff_cache/
+.marimo/
+# Raw data files — remove these lines if you want to track source data
+data/raw/
+GITIGNORE
+
+    # 6. README
+    CURRENT_DATE=$(date +"%Y-%m-%d")
+    USER_NAME=$(git config user.name 2>/dev/null || whoami)
+
+    case "$PROJECT_TYPE" in
+      Research) TYPE_DESC="Research project" ;;
+      Analysis) TYPE_DESC="Data analysis"    ;;
+      Report)   TYPE_DESC="Report"           ;;
+    esac
+
+    cat <<README > README.md
+# $PROJECT_NAME
+
+**Type:** $TYPE_DESC
+**Created:** $CURRENT_DATE
+**Author:** $USER_NAME
+
+## Overview
+
+Briefly describe the purpose of this project.
+
+## Folder structure
+
+\`\`\`
+data/
+  raw/          ← source data (uncommitted by default)
+  processed/    ← cleaned / derived datasets
+figures/        ← chart and visual exports
+reports/
+  drafts/       ← work-in-progress documents
+notebooks/      ← exploratory analysis
+src/            ← reusable scripts and helpers
+references/     ← PDFs, citations, background reading
+\`\`\`
+
+## Workflow
+
+1. Place raw data in \`data/raw/\`
+2. Explore in \`notebooks/\` or \`src/\`
+3. Export clean datasets to \`data/processed/\`
+4. Save figures to \`figures/\`
+5. Draft in \`reports/drafts/\` → finalise in \`reports/\`
+
+## Key commands
+
+\`\`\`bash
+# Query data and pipe to narrative prose
+ai-duck data/processed/results.csv "top findings" | ai-narrative
+
+# Query data and pipe to slide copy
+ai-duck data/processed/results.csv "key metrics" | ai-slide-copy
+
+# Semantic search across this project
+ai-search
+\`\`\`
+README
+
+    # 7. Git
+    if [ "$DO_GIT" = true ]; then
+      git init -q
+      git add .
+      git commit -m "Initial scaffold (report-init: $PROJECT_TYPE)" -q
+    fi
+
+    echo ""
+    gum style --border double --padding "1 2" --margin "1 2" \
+      " $PROJECT_NAME ($PROJECT_TYPE) ready at $(pwd)"
+  '';
+
   # ── mdconvert: markdown → docx / html / pdf (python-docx + WeasyPrint) ──────
   # Replaces the fragile pandoc table pipeline.
   # The Python script lives next to this file; uv resolves its inline deps on
@@ -418,6 +542,18 @@ EOF
     exec bash "${../../scripts/ai-chat.sh}" "$@"
   '';
 
+  ai-narrative = pkgs.writeShellScriptBin "ai-narrative" ''
+    exec bash "${../../scripts/ai-narrative.sh}" "$@"
+  '';
+
+  ai-duck = pkgs.writeShellScriptBin "ai-duck" ''
+    exec bash "${../../scripts/ai-duck.sh}" "$@"
+  '';
+
+  ai-slide-copy = pkgs.writeShellScriptBin "ai-slide-copy" ''
+    exec bash "${../../scripts/ai-slide-copy.sh}" "$@"
+  '';
+
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
     #!/usr/bin/env bash
     # Pull models for Ollama
@@ -446,6 +582,7 @@ in
 {
   home.packages = [
     pyinit
+    report-init
     ollama-pull
     mdconvert
     gum-wrapped
@@ -455,5 +592,8 @@ in
     ai-search
     ai-cmd
     ai-chat
+    ai-narrative
+    ai-duck
+    ai-slide-copy
   ];
 }
