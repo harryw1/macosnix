@@ -401,6 +401,11 @@ EOF
     exec bash "${../../scripts/ai-pr.sh}" "$@"
   '';
 
+  ai-search = pkgs.writeShellScriptBin "ai-search" ''
+    export XDG_DATA_HOME="\${XDG_DATA_HOME:-\$HOME/.local/share}"
+    exec bash "${../../scripts/ai-search.sh}" "$@"
+  '';
+
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
     #!/usr/bin/env bash
     # Pull models for Ollama
@@ -435,5 +440,6 @@ in
     git-ai-commit
     ai-explain
     ai-pr
+    ai-search
   ];
 }

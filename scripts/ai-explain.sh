@@ -8,7 +8,7 @@
 #   aiexplain "cargo build" "error[E0382]…" # cmd + its output as two args
 set -euo pipefail
 
-MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+MODEL="${OLLAMA_MODEL:-lfm2.5-thinking:1.2b}"
 
 # ── Gather input ───────────────────────────────────────────────────────────────
 CMD_INPUT=""
@@ -94,10 +94,9 @@ payload = {
     'model': os.environ['MODEL'],
     'prompt': prompt,
     'stream': False,
-    'think': False,
     'options': {
-        'temperature': 0.3,
-        'num_predict': 300,
+        'temperature': 0.6,
+        'num_predict': 1500,
         'num_ctx': 4096,
     }
 }
@@ -110,17 +109,21 @@ gum spin --spinner dot --title "󰚩  Thinking with $MODEL..." -- \
     -H "Content-Type: application/json" \
     -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
-RAW=$(python3 -c \
-  "import json, os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" \
-  2>/dev/null || true)
-
-# Strip any <think>…</think> blocks
-EXPLANATION=$(printf '%s' "$RAW" | awk '
-    /<think>/          { xml=1 }
-    xml && /<\/think>/ { xml=0; next }
-    xml                { next }
-    { print }
-  ' | sed 's/^[[:space:]]*//')
+# Cleanly parse out the think block and the final explanation using Python
+EXPLANATION=$(python3 -c "
+import json, os, re, sys
+try:
+    with open(os.environ['MSG_FILE']) as f:
+        d = json.load(f)
+    resp = d.get('response', '')
+    cleaned = re.sub(r'<think>.*?</think>', '', resp, flags=re.DOTALL).strip()
+    if not cleaned:
+        cleaned = resp.strip()
+    print(cleaned)
+except Exception as e:
+    print(f'Error parsing response: {e}')
+    sys.exit(1)
+" 2>/dev/null || true)
 
 if [ -z "$EXPLANATION" ]; then
   echo " No explanation generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
