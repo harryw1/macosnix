@@ -9,7 +9,6 @@
     fd           # fast find
     fzf          # fuzzy finder
     ripgrep      # fast grep (rg)
-    gum          # Tool for glamorous shell scripts
 
     # Git toolchain
     git-lfs      # large file storage

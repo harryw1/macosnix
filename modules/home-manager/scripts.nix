@@ -331,7 +331,7 @@ EOF
     git commit -m "Initial commit (scaffolded by pyinit)" -q
 
     echo ""
-    $GUM style --foreground 212 --border-foreground 212 --border double --padding "1 2" --margin "1 2" "✅ Project $PROJECT_NAME ($TEMPLATE) ready!"
+    $GUM style --border double --padding "1 2" --margin "1 2" "✅ Project $PROJECT_NAME ($TEMPLATE) ready!"
   '';
 
   # ── mdconvert: markdown → docx / html / pdf (python-docx + WeasyPrint) ──────
@@ -340,6 +340,50 @@ EOF
   # first run (cached thereafter under ~/.cache/uv).
   mdconvert = pkgs.writeShellScriptBin "mdconvert" ''
     exec ${pkgs.uv}/bin/uv run "${./mdconvert.py}" "$@"
+  '';
+
+  gum-wrapped = pkgs.writeShellScriptBin "gum" ''
+    #!/usr/bin/env bash
+    
+    # Check macOS interface style
+    # "Dark" if dark mode, empty or "Light" expected if light mode
+    THEME=$(defaults read -g AppleInterfaceStyle 2>/dev/null || echo "Light")
+
+    # Catppuccin Colors
+    if [ "$THEME" = "Dark" ]; then
+      # Frappé
+      SPINNER="#ca9ee6" # Pink
+      BORDER="#ca9ee6"  # Pink
+      TEXT="#c6d0f5"    # Text
+      SEL_BG="#414559"  # Surface1
+      SEL_FG="#ca9ee6"  # Pink
+    else
+      # Latte
+      SPINNER="#ea76cb" # Pink
+      BORDER="#ea76cb"  # Pink
+      TEXT="#4c4f69"    # Text
+      SEL_BG="#ccd0da"  # Surface1
+      SEL_FG="#ea76cb"  # Pink
+    fi
+
+    # Spin styling
+    export GUM_SPIN_SPINNER="dot"
+    export GUM_SPIN_SPINNER_FOREGROUND=$SPINNER
+    
+    # Choose styling
+    export GUM_CHOOSE_CURSOR=" "
+    export GUM_CHOOSE_CURSOR_FOREGROUND=$SEL_FG
+    export GUM_CHOOSE_SELECTED_FOREGROUND=$SEL_FG
+    
+    # Input styling
+    export GUM_INPUT_PROMPT_FOREGROUND=$SPINNER
+    export GUM_INPUT_CURSOR_FOREGROUND=$SPINNER
+    
+    # Default Style Fallbacks
+    export GUM_STYLE_FOREGROUND=$TEXT
+    export GUM_STYLE_BORDER_FOREGROUND=$BORDER
+
+    exec ${pkgs.gum}/bin/gum "$@"
   '';
 
   # Thin wrapper: the real logic lives in scripts/git-ai-commit.sh so that
@@ -387,6 +431,7 @@ in
     pyinit
     ollama-pull
     mdconvert
+    gum-wrapped
     git-ai-commit
     ai-explain
     ai-pr

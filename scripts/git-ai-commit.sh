@@ -118,7 +118,6 @@ fi
 echo ""
 gum style \
   --border double --padding "1 2" \
-  --border-foreground 212 --foreground 255 \
   "$COMMIT_MSG"
 echo ""
 
@@ -136,13 +135,13 @@ case "$ACTION" in
   git add -A
   printf '%s\n' "$COMMIT_MSG" | git commit -F -
   echo ""
-  gum style --foreground 212 "✅  Committed!"
+  gum style "✅  Committed!"
   git log --oneline -1
   ;;
 "📌  Commit staged only")
   printf '%s\n' "$COMMIT_MSG" | git commit -F -
   echo ""
-  gum style --foreground 212 "✅  Committed (staged only)!"
+  gum style "✅  Committed (staged only)!"
   git log --oneline -1
   ;;
 "✏️   Edit then commit")
@@ -156,7 +155,7 @@ case "$ACTION" in
     [ "$STAGE" = "Stage all" ] && git add -A
     printf '%s\n' "$EDITED" | git commit -F -
     echo ""
-    gum style --foreground 212 "✅  Committed!"
+    gum style "✅  Committed!"
     git log --oneline -1
   else
     echo "Aborted (empty message)."

@@ -159,7 +159,6 @@ fi
 gum style \
   --width "$TERM_WIDTH" \
   --border double --padding "1 2" \
-  --border-foreground 212 --foreground 255 \
   "$(printf '📋  %s\n\n%s' "$PR_TITLE" "$PR_BODY")"
 echo ""
 
@@ -179,7 +178,7 @@ case "$ACTION" in
   ;;
 "📋  Copy to clipboard")
   printf 'Title: %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | pbcopy
-  gum style --foreground 212 "✅  Copied to clipboard!"
+  gum style "✅  Copied to clipboard!"
   ;;
 "✏️  Edit then open PR")
   TMPFILE=$(mktemp)

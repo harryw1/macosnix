@@ -135,6 +135,5 @@ fi
 gum style \
   --width "$TERM_WIDTH" \
   --border rounded --padding "1 2" \
-  --border-foreground 39 --foreground 255 \
   "$EXPLANATION"
 echo ""
