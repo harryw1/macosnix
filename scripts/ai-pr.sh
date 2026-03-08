@@ -121,7 +121,7 @@ export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
 gum spin --spinner dot --title "󰚩  Generating PR description with $MODEL..." -- \
   sh -c 'curl -s http://localhost:11434/api/generate \
     -H "Content-Type: application/json" \
-    -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
+    -d @"$1" > "$2" 2>/dev/null' _ "$PAYLOAD_FILE" "$MSG_FILE"
 
 RAW=$(python3 -c \
   "import json, os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" \

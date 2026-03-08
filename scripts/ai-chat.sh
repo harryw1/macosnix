@@ -81,9 +81,9 @@ trap 'rm -f "$RESULT_FILE"' EXIT
 export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL
 
 gum spin --spinner dot --title "󰚩  Searching and generating with $CHAT_MODEL..." -- \
-  sh -c 'OLLAMA_MODEL="$CHAT_MODEL" \
-    OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
-    uv run "$PY_SCRIPT" --chat "$QUERY" --scope "$SCOPE" > "$RESULT_FILE" 2>/dev/null'
+  sh -c 'OLLAMA_MODEL="$1" \
+    OLLAMA_MODEL_EMBED="$2" \
+    uv run "$3" --chat "$4" --scope "$5" > "$6" 2>/dev/null' _ "$CHAT_MODEL" "$EMBED_MODEL" "$PY_SCRIPT" "$QUERY" "$SCOPE" "$RESULT_FILE"
 
 # ── Parse result ───────────────────────────────────────────────────────────────
 ANSWER=$(python3 -c "
