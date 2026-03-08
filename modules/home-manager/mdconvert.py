@@ -27,8 +27,6 @@ Front-matter (YAML between --- delimiters) supports:
   title, subtitle, author, email, organization, date, template
 """
 
-from __future__ import annotations
-
 import argparse
 import re
 import sys
