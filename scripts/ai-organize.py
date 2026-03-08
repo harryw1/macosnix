@@ -361,19 +361,19 @@ SYSTEM_PROMPT = (
 def call_llm(prompt: str) -> str:
     """Send *prompt* to Ollama and return the raw text response."""
     payload: dict = {
-        "model":  MODEL,
-        "prompt": prompt,
-        "system": SYSTEM_PROMPT,
-        "stream": False,
-        "think":  False,          # top-level: suppresses chain-of-thought on qwen3 models
+        "model":      MODEL,
+        "prompt":     prompt,
+        "system":     SYSTEM_PROMPT,
+        "stream":     False,
+        "think":      False,      # suppress chain-of-thought on qwen3 models
+        "keep_alive": -1,         # keep model loaded in VRAM for the whole session
         "options": {
             "temperature": 0.15,
-            # Budget: 40 files × 2 ops × ~80 tokens/op + overhead ≈ 7 000 tokens
             "num_predict": 8192,
         },
     }
     try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=180)
+        resp = requests.post(OLLAMA_URL, json=payload, timeout=600)
         resp.raise_for_status()
         return resp.json().get("response", "").strip()
     except requests.exceptions.RequestException as e:
@@ -422,103 +422,220 @@ def extract_json(text: str) -> dict | list:
 
 
 # ── Plan Generation ────────────────────────────────────────────────────────────
+#
+# Strategy
+# --------
+# Old approach: send every file with snippets to the LLM → O(N/40) calls,
+#               each requiring ~8 000 token output budget. Hits timeouts at scale.
+#
+# New approach:
+#   --organize / --flatten   Two-phase
+#     Phase 1 (1 call)     : send all file *paths* (no snippets) → folder taxonomy
+#     Phase 2 (N/150 calls): classify files into that taxonomy → compact output
+#   --rename                 Snippet-based, but pre-filtered to obvious candidates
+#     (1–2 calls for most dirs)
+#
+# Result: 739 files → ~6 LLM calls instead of 19.
 
-_SCHEMA = """\
-{
-  "operations": [
-    { "op": "mkdir",     "path": "folder/name"                                           },
-    { "op": "move",      "from": "old/path.pdf", "to": "new/folder/name.pdf", "reason": "…" },
-    { "op": "rename",    "from": "old-name.txt", "to": "new-name.txt",        "reason": "…" },
-    { "op": "duplicate", "files": ["a.pdf", "b.pdf"],                         "reason": "…" }
-  ],
-  "summary": "One-sentence summary of the proposed changes."
-}"""
+# Maximum files per classification call (output is ~50 tokens/file: much smaller
+# than a full plan operation, so we can use much larger batches).
+MAX_CLASSIFY_BATCH = 150
+# Maximum files per rename-suggestion call (needs snippets, so smaller batches).
+MAX_RENAME_BATCH   = 30
 
 
-def _build_file_table(files: list[dict]) -> str:
-    lines: list[str] = []
-    for f in files:
-        size_kb  = round(f["size"] / 1024, 1)
-        preview  = f["snippet"].replace("\n", " ").strip()[:300]
-        preview_part = f' | preview: "{preview}"' if preview else ""
-        lines.append(f"  {f['path']} ({size_kb} KB){preview_part}")
-    return "\n".join(lines)
+# ── Rename candidate detection ─────────────────────────────────────────────────
+
+_GENERIC_STEM_RE = [
+    # Generic document names: doc1, report2, file_3, data, untitled, new copy…
+    re.compile(
+        r'^(doc|document|file|report|data|untitled|new|copy|image|img|photo|'
+        r'pic|scan|draft|temp|tmp|attachment|download|export|output|result)\s*[\d_\-]*$',
+        re.IGNORECASE,
+    ),
+    re.compile(r'^[A-Z]{2,5}\d{3,}$'),               # IMG0001, DSC09876, DCIM0042
+    re.compile(r'^\d{4}-\d{2}-\d{2}$'),              # 2024-01-15  (date, no description)
+    re.compile(r'^\d{8,}$'),                          # purely numeric (timestamps, IDs)
+    re.compile(r'^[a-f0-9]{8,}$', re.IGNORECASE),    # hash-named files
+]
+
+def is_rename_candidate(filename: str) -> bool:
+    """Return True if the filename stem looks too generic to be self-describing."""
+    stem = Path(filename).stem
+    return any(pat.match(stem) for pat in _GENERIC_STEM_RE)
 
 
-def _generate_plan_batch(
-    files: list[dict],
-    root: str,
-    do_rename: bool,
-    do_organize: bool,
-    do_flatten: bool,
-) -> dict:
-    """Ask the LLM to produce a plan for a single batch of files."""
-    tasks: list[str] = []
-    if do_organize:
-        tasks.append(
-            "Group files into logical subdirectories by topic, type, or date. "
-            "Max 2 levels of depth. Lowercase kebab-case folder names."
-        )
-    if do_rename:
-        tasks.append(
-            "Rename files to be more descriptive and self-explanatory. "
-            "Lowercase kebab-case. Keep the original extension. "
-            "Only rename when the new name genuinely adds clarity."
-        )
-    if do_flatten:
-        tasks.append(
-            "Flatten deeply-nested paths to the root or a single shallow folder. "
-            "Encode original context into the filename (e.g., 'reports-2024-q3-budget.pdf')."
-        )
+# ── Phase 1: folder taxonomy ───────────────────────────────────────────────────
 
-    task_block = "\n".join(f"  {i + 1}. {t}" for i, t in enumerate(tasks))
+def plan_folder_taxonomy(files: list[dict], root: str) -> list[str]:
+    """One LLM call: derive a folder structure from file paths alone (no snippets).
 
-    prompt = f"""Analyse the files in directory: {root}
+    Sending only paths keeps the prompt tiny — all 700+ files fit comfortably —
+    and the output is a small JSON array of folder names.
+    """
+    paths_text = "\n".join(f"  {f['path']}" for f in files)
 
-TASKS:
-{task_block}
+    prompt = f"""You are organizing files in: {root}
+
+Given the file list below, propose a clean, minimal folder structure.
 
 RULES:
-- Output ONLY a single JSON object — no prose, no markdown fences.
-- Never delete. Allowed operations: mkdir, move, rename, duplicate.
-- Paths are relative to the target directory root.
-- Lowercase kebab-case for all folder and file names.
-- Keep original file extensions unchanged.
-- Maximum folder depth: 2 levels.
-- Be conservative — only suggest changes that meaningfully improve clarity.
-- "move"  : file changes folder (and may also be renamed).
-- "rename": file stays in its current folder but gets a better name.
-- "mkdir" : every new folder referenced in a "move" needs its own mkdir entry.
-- "duplicate": groups of files that appear to have identical/near-identical content.
-- Every destination folder in a "move" must have a corresponding "mkdir".
+- 5 to 15 folders total
+- Maximum 2 levels of depth
+- Lowercase kebab-case names
+- Name folders after actual content themes (avoid "misc", "other", "files")
+- Every file must fit into at least one folder
 
 FILES:
-{_build_file_table(files)}
+{paths_text}
 
-JSON SCHEMA:
-{_SCHEMA}
+Output ONLY a JSON array of folder path strings.
+Example: ["reports/2024", "data/raw", "notebooks", "assets/images"]
 
-Output only the JSON:"""
+JSON:"""
 
     raw = call_llm(prompt)
-
     try:
-        plan = extract_json(raw)
-        if not isinstance(plan, dict) or "operations" not in plan:
-            raise ValueError("Missing 'operations' key")
-        return plan
-    except (ValueError, KeyError) as e:
-        print(f"Warning: LLM returned unexpected output ({e}), retrying…", file=sys.stderr)
-        raw2 = call_llm(
-            f"Output ONLY valid JSON matching the schema. No other text.\n\n{prompt}"
-        )
-        try:
-            plan = extract_json(raw2)
-            return plan
-        except (ValueError, KeyError):
-            print("Error: Could not parse LLM response as a valid plan.", file=sys.stderr)
-            sys.exit(1)
+        result = extract_json(raw)
+        if isinstance(result, list):
+            return [str(f).strip().rstrip("/") for f in result if isinstance(f, str) and f.strip()]
+    except (ValueError, KeyError):
+        pass
+    return []
 
+
+# ── Phase 2: file classification ───────────────────────────────────────────────
+
+def classify_files_to_folders(
+    files: list[dict],
+    folders: list[str],
+    root: str,
+) -> list[dict]:
+    """Assign each file to a folder from the taxonomy. Large batches (150 files)
+    are fine here because each output entry is only ~50 tokens.
+    """
+    all_ops: list[dict] = []
+    folders_text = "\n".join(f"  {f}" for f in folders)
+    total = (len(files) + MAX_CLASSIFY_BATCH - 1) // MAX_CLASSIFY_BATCH
+
+    for i in range(0, len(files), MAX_CLASSIFY_BATCH):
+        batch = files[i : i + MAX_CLASSIFY_BATCH]
+        n     = i // MAX_CLASSIFY_BATCH + 1
+        print(f"  Classify batch {n}/{total} ({len(batch)} files)…", file=sys.stderr)
+
+        files_text = "\n".join(f"  {f['path']}" for f in batch)
+        prompt = f"""Assign each file to the most appropriate folder from the list below.
+
+AVAILABLE FOLDERS (in: {root}):
+{folders_text}
+
+FILES TO CLASSIFY:
+{files_text}
+
+RULES:
+- Assign every file to exactly one folder
+- Output ONLY a JSON array — no prose, no fences
+
+JSON: [{{"file": "original/path.ext", "folder": "target/folder"}}, ...]"""
+
+        raw = call_llm(prompt)
+        try:
+            assignments = extract_json(raw)
+            if not isinstance(assignments, list):
+                print(f"  Warning: unexpected response for classify batch {n}, skipping.", file=sys.stderr)
+                continue
+        except (ValueError, KeyError):
+            print(f"  Warning: could not parse classify batch {n}, skipping.", file=sys.stderr)
+            continue
+
+        seen_mkdirs: set[str] = set()
+        for a in assignments:
+            if not isinstance(a, dict):
+                continue
+            src    = a.get("file",   "").strip()
+            folder = a.get("folder", "").strip().rstrip("/")
+            if not src or not folder:
+                continue
+            dst = f"{folder}/{Path(src).name}"
+            if src == dst:
+                continue
+            if folder not in seen_mkdirs:
+                all_ops.append({"op": "mkdir", "path": folder})
+                seen_mkdirs.add(folder)
+            all_ops.append({"op": "move", "from": src, "to": dst,
+                            "reason": f"Organized into {folder}"})
+
+    return all_ops
+
+
+# ── Rename pass (snippet-based, pre-filtered) ──────────────────────────────────
+
+_RENAME_SCHEMA = """\
+[
+  {"from": "old-name.pdf", "to": "better-name.pdf", "reason": "…"},
+  …
+]"""
+
+def suggest_renames(candidates: list[dict], root: str) -> list[dict]:
+    """Suggest better names only for files that look non-descriptive.
+
+    Uses content snippets (so smaller batches), but the candidate list is
+    typically tiny after pre-filtering, so total LLM calls stay low.
+    """
+    all_ops: list[dict] = []
+    total = (len(candidates) + MAX_RENAME_BATCH - 1) // MAX_RENAME_BATCH
+
+    for i in range(0, len(candidates), MAX_RENAME_BATCH):
+        batch = candidates[i : i + MAX_RENAME_BATCH]
+        n     = i // MAX_RENAME_BATCH + 1
+        print(f"  Rename batch {n}/{total} ({len(batch)} files)…", file=sys.stderr)
+
+        files_text = "\n".join(
+            f"  {f['path']} | preview: \"{f['snippet'].replace(chr(10), ' ').strip()[:250]}\""
+            if f["snippet"] else f"  {f['path']}"
+            for f in batch
+        )
+        prompt = f"""Suggest better filenames for the files below. Only rename when the new name
+is clearly more descriptive than the original. Keep the file in its current directory.
+
+RULES:
+- Lowercase kebab-case. Keep the original extension.
+- Output ONLY a JSON array. Omit files that don't need renaming.
+
+FILES (in: {root}):
+{files_text}
+
+SCHEMA: {_RENAME_SCHEMA}
+
+JSON:"""
+
+        raw = call_llm(prompt)
+        try:
+            renames = extract_json(raw)
+            if not isinstance(renames, list):
+                continue
+        except (ValueError, KeyError):
+            print(f"  Warning: could not parse rename batch {n}, skipping.", file=sys.stderr)
+            continue
+
+        for r in renames:
+            if not isinstance(r, dict):
+                continue
+            src = r.get("from", "").strip()
+            dst = r.get("to",   "").strip()
+            if not src or not dst or src == dst:
+                continue
+            # Ensure the rename stays in the same directory
+            src_parent = str(Path(src).parent)
+            dst_name   = Path(dst).name
+            normalized_dst = f"{src_parent}/{dst_name}" if src_parent != "." else dst_name
+            all_ops.append({"op": "rename", "from": src, "to": normalized_dst,
+                            "reason": r.get("reason", "")})
+
+    return all_ops
+
+
+# ── Top-level plan dispatcher ──────────────────────────────────────────────────
 
 def generate_plan(
     files: list[dict],
@@ -527,29 +644,50 @@ def generate_plan(
     do_organize: bool,
     do_flatten: bool,
 ) -> dict:
-    """Generate a plan, batching files when needed to stay within context limits."""
-    if len(files) <= MAX_FILES_PER_BATCH:
-        return _generate_plan_batch(files, directory, do_rename, do_organize, do_flatten)
+    """Dispatch to the most efficient strategy for the requested operations."""
+    all_ops:   list[dict] = []
+    summaries: list[str]  = []
 
-    print(
-        f"Found {len(files)} files — splitting into batches of {MAX_FILES_PER_BATCH}.",
-        file=sys.stderr,
-    )
+    # ── Organize / Flatten: two-phase ─────────────────────────────────────────
+    if do_organize or do_flatten:
+        print(f"  Phase 1: deriving folder structure from {len(files)} paths…",
+              file=sys.stderr)
 
-    all_ops: list[dict] = []
-    summaries: list[str] = []
-    total = (len(files) + MAX_FILES_PER_BATCH - 1) // MAX_FILES_PER_BATCH
+        if do_flatten:
+            deep = sum(1 for f in files if f["path"].count("/") > 1)
+            if deep:
+                print(f"  {deep} deeply-nested file(s) will be flattened.", file=sys.stderr)
 
-    for i in range(0, len(files), MAX_FILES_PER_BATCH):
-        batch = files[i : i + MAX_FILES_PER_BATCH]
-        n     = i // MAX_FILES_PER_BATCH + 1
-        print(f"  Batch {n}/{total} ({len(batch)} files)…", file=sys.stderr)
-        plan = _generate_plan_batch(batch, directory, do_rename, do_organize, do_flatten)
-        all_ops.extend(plan.get("operations", []))
-        if plan.get("summary"):
-            summaries.append(plan["summary"])
+        folders = plan_folder_taxonomy(files, directory)
 
-    # Deduplicate mkdir entries that may appear across batches
+        if not folders:
+            print("  Warning: no folder structure proposed, skipping organize step.",
+                  file=sys.stderr)
+        else:
+            preview = ", ".join(folders[:6]) + ("…" if len(folders) > 6 else "")
+            print(f"  Proposed {len(folders)} folder(s): {preview}", file=sys.stderr)
+            print(f"  Phase 2: classifying {len(files)} file(s)…", file=sys.stderr)
+
+            ops = classify_files_to_folders(files, folders, directory)
+            all_ops.extend(ops)
+            n_moves = sum(1 for o in ops if o.get("op") == "move")
+            summaries.append(f"Organized {n_moves} file(s) into {len(folders)} folder(s).")
+
+    # ── Rename: pre-filtered snippet pass ─────────────────────────────────────
+    if do_rename:
+        candidates = [f for f in files if is_rename_candidate(f["name"])]
+        if candidates:
+            print(f"  {len(candidates)} rename candidate(s) identified.", file=sys.stderr)
+            ops = suggest_renames(candidates, directory)
+            all_ops.extend(ops)
+            n = len(ops)
+            if n:
+                summaries.append(f"Suggested {n} rename(s).")
+        else:
+            print("  No rename candidates found (all filenames look descriptive).",
+                  file=sys.stderr)
+
+    # Deduplicate mkdir operations accumulated across phases
     seen_mkdirs: set[str] = set()
     deduped: list[dict] = []
     for op in all_ops:
@@ -561,7 +699,7 @@ def generate_plan(
         else:
             deduped.append(op)
 
-    return {"operations": deduped, "summary": " ".join(summaries)}
+    return {"operations": deduped, "summary": " ".join(s for s in summaries if s)}
 
 
 # ── Deduplication ──────────────────────────────────────────────────────────────
