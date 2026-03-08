@@ -73,13 +73,17 @@ def open_db() -> sqlite3.Connection:
 
 
 # ── Retrieval ──────────────────────────────────────────────────────────────────
-def retrieve(conn: sqlite3.Connection, query: str) -> list[dict]:
+def retrieve(conn: sqlite3.Connection, query: str, scope: str | None = None) -> list[dict]:
     embedding = get_embedding(query)
     if not embedding:
         return []
 
     vec_bytes = struct.pack(f"<{len(embedding)}f", *embedding)
     cur = conn.cursor()
+
+    # Fetch extra candidates when scoping so we still get TOP_K after filtering.
+    fetch_limit = TOP_K * 4 if scope else TOP_K
+    scope_prefix = (scope.rstrip("/") + "/") if scope else None
 
     try:
         cur.execute(
@@ -93,7 +97,7 @@ def retrieve(conn: sqlite3.Connection, query: str) -> list[dict]:
             ORDER BY distance ASC
             LIMIT ?
             """,
-            (vec_bytes, TOP_K),
+            (vec_bytes, fetch_limit),
         )
         rows = cur.fetchall()
     except sqlite3.OperationalError as e:
@@ -104,8 +108,12 @@ def retrieve(conn: sqlite3.Connection, query: str) -> list[dict]:
     for filepath, snippet, dist in rows:
         if dist > 0.8:   # discard clearly unrelated chunks
             continue
+        if scope_prefix and not filepath.startswith(scope_prefix):
+            continue     # restrict to current project
         score = round(max(0.0, 1.0 - dist), 4)
         results.append({"filepath": filepath, "snippet": snippet, "score": score})
+        if len(results) >= TOP_K:
+            break
 
     return results
 
@@ -162,9 +170,9 @@ def generate_answer(prompt: str) -> str:
 
 
 # ── Main chat pipeline ─────────────────────────────────────────────────────────
-def chat(query: str) -> None:
+def chat(query: str, scope: str | None = None) -> None:
     conn = open_db()
-    chunks = retrieve(conn, query)
+    chunks = retrieve(conn, query, scope=scope)
     conn.close()
 
     prompt = build_prompt(query, chunks)
@@ -193,10 +201,14 @@ def main() -> None:
         description="RAG chat backend: retrieve relevant chunks then generate an answer."
     )
     parser.add_argument("--chat", metavar="QUERY", help="Question to answer")
+    parser.add_argument(
+        "--scope", metavar="DIR",
+        help="Restrict retrieval to files under this directory (e.g. git root)",
+    )
     args = parser.parse_args()
 
     if args.chat:
-        chat(args.chat)
+        chat(args.chat, scope=args.scope)
     else:
         parser.print_help()
         sys.exit(1)

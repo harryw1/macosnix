@@ -67,16 +67,23 @@ if [ -f "$SEARCH_PY" ]; then
   fi
 fi
 
+# ── Determine search scope (git root > PWD) ────────────────────────────────────
+SCOPE="$PWD"
+if git rev-parse --git-dir >/dev/null 2>&1; then
+  GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  [ -n "$GIT_ROOT" ] && SCOPE="$GIT_ROOT"
+fi
+
 # ── Run RAG pipeline ───────────────────────────────────────────────────────────
 RESULT_FILE=$(mktemp)
 trap 'rm -f "$RESULT_FILE"' EXIT
 
-export QUERY RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL
+export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL
 
 gum spin --spinner dot --title "󰚩  Searching and generating with $CHAT_MODEL..." -- \
   sh -c 'OLLAMA_MODEL="$CHAT_MODEL" \
     OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
-    uv run "$PY_SCRIPT" --chat "$QUERY" > "$RESULT_FILE" 2>/dev/null'
+    uv run "$PY_SCRIPT" --chat "$QUERY" --scope "$SCOPE" > "$RESULT_FILE" 2>/dev/null'
 
 # ── Parse result ───────────────────────────────────────────────────────────────
 ANSWER=$(python3 -c "
