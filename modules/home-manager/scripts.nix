@@ -402,7 +402,7 @@ EOF
   '';
 
   ai-search = pkgs.writeShellScriptBin "ai-search" ''
-    export XDG_DATA_HOME="\${XDG_DATA_HOME:-\$HOME/.local/share}"
+    export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
     exec bash "${../../scripts/ai-search.sh}" "$@"
   '';
 
