@@ -38,13 +38,28 @@ in
       la   = "eza --icons --group-directories-first --git -la";
       lt   = "eza --icons --tree --group-directories-first";
       cat  = "bat";
-      lg   = "lazygit";
       v    = "nvim";
       vi   = "nvim";
       vim  = "nvim";
       grep = "rg";
       find = "fd";
       cc   = "claude";
+
+      # ── Git & Git-AI ───────────────────────────────────────────────────────
+      g    = "git";
+      ga   = "git add";
+      gaa  = "git add --all";
+      gs   = "git status";
+      gd   = "git diff";
+      gb   = "git branch";
+      gco  = "git checkout";
+      gc   = "git commit -m";
+      gl   = "git pull";
+      gp   = "git push";
+      lg   = "lazygit";
+      gac  = "git-ai-commit"; # AI-generated commit message (ollama)
+      gapr = "ai-pr";         # AI-generated PR description
+
 
       # ── Navigation ────────────────────────────────────────────────────────
       ".."   = "cd ..";
@@ -64,9 +79,7 @@ in
       j     = "just";          # Shorthand for justfile tasks
       wt    = "watchexec";    # Watch files and re-run commands on change
       ol    = "ollama-pull";  # One-step model setup
-      gaic  = "git-ai-commit"; # AI-generated commit message (ollama)
       aie   = "ai-explain";    # AI explanation of commands/errors
-      aipr  = "ai-pr";         # AI-generated PR description
       
       # ── Markdown conversion (mdconvert: python-docx + WeasyPrint) ────────────
       # Report style (navy/gold palette, cover page)
