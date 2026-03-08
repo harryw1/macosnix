@@ -407,6 +407,17 @@ EOF
     exec bash "${../../scripts/ai-search.sh}" "$@"
   '';
 
+  ai-cmd = pkgs.writeShellScriptBin "ai-cmd" ''
+    exec bash "${../../scripts/ai-cmd.sh}" "$@"
+  '';
+
+  ai-chat = pkgs.writeShellScriptBin "ai-chat" ''
+    export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
+    export AI_CHAT_PY_PATH="${../../scripts/ai-chat.py}"
+    export AI_SEARCH_PY_PATH="${../../scripts/ai-search.py}"
+    exec bash "${../../scripts/ai-chat.sh}" "$@"
+  '';
+
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
     #!/usr/bin/env bash
     # Pull models for Ollama
@@ -442,5 +453,7 @@ in
     ai-explain
     ai-pr
     ai-search
+    ai-cmd
+    ai-chat
   ];
 }

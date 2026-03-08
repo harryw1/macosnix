@@ -74,6 +74,14 @@ explain: ## Use ollama to explain a command or error
 pr: ## Use ollama to generate a GitHub PR description
 	@bash "$(CURDIR)/scripts/ai-pr.sh"
 
+cmd: ## Use ollama to generate a shell command from natural language
+	@bash "$(CURDIR)/scripts/ai-cmd.sh"
+
+chat: ## Ask a question about your indexed codebase (RAG)
+	@AI_SEARCH_PY_PATH="$(CURDIR)/scripts/ai-search.py" \
+	 AI_CHAT_PY_PATH="$(CURDIR)/scripts/ai-chat.py" \
+	 bash "$(CURDIR)/scripts/ai-chat.sh"
+
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'

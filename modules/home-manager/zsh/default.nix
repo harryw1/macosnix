@@ -78,8 +78,10 @@ in
       pyinit = "pyinit";      # Calls our robust scaffolding script
       j     = "just";          # Shorthand for justfile tasks
       wt    = "watchexec";    # Watch files and re-run commands on change
-      ol    = "ollama-pull";  # One-step model setup
-      aie   = "ai-explain";    # AI explanation of commands/errors
+      ol     = "ollama-pull";  # One-step model setup
+      aie    = "ai-explain";   # AI explanation of commands/errors
+      aicmd  = "ai-cmd";       # Natural language → shell command (ollama)
+      aichat = "ai-chat";      # RAG chat over indexed codebase (ollama)
       
       # ── Markdown conversion (mdconvert: python-docx + WeasyPrint) ────────────
       # Report style (navy/gold palette, cover page)
