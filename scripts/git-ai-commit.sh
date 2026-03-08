@@ -68,12 +68,13 @@ printf '%s\n' \
 #   num_predict: 200  — hard token cap; commits are short, no need to generate more
 #   num_ctx: 4096     — enough for our truncated diff
 PAYLOAD_FILE=$(mktemp)
+export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
 python3 -c "
-import json, sys
-with open('$PROMPT_FILE') as f:
+import json, sys, os
+with open(os.environ['PROMPT_FILE']) as f:
     prompt = f.read()
 payload = {
-    'model': '$MODEL',
+    'model': os.environ['MODEL'],
     'prompt': prompt,
     'stream': False,
     'think': False,
@@ -87,11 +88,12 @@ print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
 
+export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
 gum spin --spinner dot --title "󰚩  Generating commit message with $MODEL..." -- \
-  sh -c "curl -s http://localhost:11434/api/generate -H 'Content-Type: application/json' -d @$PAYLOAD_FILE > $MSG_FILE 2>/dev/null"
+  sh -c 'curl -s http://localhost:11434/api/generate -H "Content-Type: application/json" -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
 # Parse response; fall back to awk anchor on commit type if model ignored think:false
-RAW=$(python3 -c "import json,sys; d=json.load(open('$MSG_FILE')); print(d.get('response',''))" 2>/dev/null || true)
+RAW=$(python3 -c "import json,sys,os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" 2>/dev/null || true)
 COMMIT_MSG=$(printf '%s' "$RAW" |
   awk '
       /<think>/        { xml=1 }

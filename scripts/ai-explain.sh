@@ -85,12 +85,13 @@ else
     >"$PROMPT_FILE"
 fi
 
+export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
 python3 -c "
-import json
-with open('$PROMPT_FILE') as f:
+import json, os
+with open(os.environ['PROMPT_FILE']) as f:
     prompt = f.read()
 payload = {
-    'model': '$MODEL',
+    'model': os.environ['MODEL'],
     'prompt': prompt,
     'stream': False,
     'think': False,
@@ -103,13 +104,14 @@ payload = {
 print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 
+export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
 gum spin --spinner dot --title "󰚩  Thinking with $MODEL..." -- \
-  sh -c "curl -s http://localhost:11434/api/generate \
-    -H 'Content-Type: application/json' \
-    -d @$PAYLOAD_FILE > $MSG_FILE 2>/dev/null"
+  sh -c 'curl -s http://localhost:11434/api/generate \
+    -H "Content-Type: application/json" \
+    -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
 RAW=$(python3 -c \
-  "import json; d=json.load(open('$MSG_FILE')); print(d.get('response',''))" \
+  "import json, os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" \
   2>/dev/null || true)
 
 # Strip any <think>…</think> blocks
