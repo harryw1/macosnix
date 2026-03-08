@@ -143,15 +143,29 @@ echo ""
 gum style --bold "Analyzing: $TARGET_DIR"
 echo ""
 
-# ── Generate plan ──────────────────────────────────────────────────────────────
-PLAN_FILE=$(mktemp /tmp/ai-organize-XXXXXX.json)
-trap 'rm -f "$PLAN_FILE"' EXIT
+# ── Step 1: scan (fast — show spinner) ────────────────────────────────────────
+SCAN_FILE=$(mktemp /tmp/ai-organize-scan-XXXXXX.json)
+PLAN_FILE=$(mktemp /tmp/ai-organize-plan-XXXXXX.json)
+trap 'rm -f "$SCAN_FILE" "$PLAN_FILE"' EXIT
 
-PY_CMD="OLLAMA_MODEL=\"$MODEL\" OLLAMA_MODEL_EMBED=\"$EMBED_MODEL\" \
-  uv run \"$PY_SCRIPT\" --plan \"$TARGET_DIR\" $PY_FLAGS > \"$PLAN_FILE\""
+SCAN_FLAGS=""
+$DO_TOP_LEVEL && SCAN_FLAGS="--top-level"
 
-gum spin --spinner dot --title "󰚩  Scanning files and generating plan…" -- \
-  bash -c "$PY_CMD"
+gum spin --spinner dot --title "Scanning files…" -- \
+  bash -c "uv run \"$PY_SCRIPT\" --scan \"$TARGET_DIR\" $SCAN_FLAGS > \"$SCAN_FILE\""
+
+FILE_COUNT=$(python3 -c "import json; print(len(json.load(open('$SCAN_FILE'))))")
+echo "  Found $FILE_COUNT file(s)."
+echo ""
+
+# ── Step 2: generate plan (slow — stream Python's progress to terminal) ────────
+echo "󰚩  Generating plan… (this may take a minute)"
+echo ""
+
+OLLAMA_MODEL="$MODEL" OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
+  uv run "$PY_SCRIPT" --plan "$TARGET_DIR" $PY_FLAGS > "$PLAN_FILE"
+
+echo ""
 
 if [[ ! -s "$PLAN_FILE" ]]; then
   echo " Error: No plan was generated."

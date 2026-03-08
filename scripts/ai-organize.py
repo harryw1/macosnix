@@ -181,7 +181,8 @@ def call_llm(prompt: str) -> str:
         "stream": False,
         "options": {
             "temperature": 0.15,
-            "num_predict": 2048,
+            "num_predict": 1024,
+            "think": False,
         },
     }
     try:
