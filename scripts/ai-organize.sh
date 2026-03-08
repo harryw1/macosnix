@@ -102,7 +102,7 @@ fi
 # 2. Operations (interactive if none given via flags)
 if ! $FLAGS_GIVEN; then
   echo ""
-  gum style --dim "Directory: $TARGET_DIR"
+  gum style --faint "Directory: $TARGET_DIR"
   echo ""
 
   CHOSEN=$(gum choose --no-limit \
