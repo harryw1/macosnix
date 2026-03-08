@@ -66,6 +66,140 @@ IGNORE_DIRS  = {".git", "node_modules", "vendor", "__pycache__", ".venv",
                 "dist", "build", ".DS_Store", ".idea", ".vscode"}
 IGNORE_FILES = {".DS_Store", ".gitkeep", "Thumbs.db", ".localized"}
 
+# ── Code-project awareness ─────────────────────────────────────────────────────
+# If any of these marker files exist at the root, we treat the directory as a
+# code project and apply strict filtering so the LLM doesn't try to move source
+# files, config files, lock files, or anything inside structural directories.
+CODE_PROJECT_MARKERS = frozenset({
+    "pyproject.toml", "setup.py", "setup.cfg",
+    "package.json", "Cargo.toml", "go.mod",
+    "flake.nix", "CMakeLists.txt", "Gemfile",
+    "build.gradle", "pom.xml", "mix.exs",
+})
+
+# Extensions we *do* want to organize even inside a code project.
+# Everything else (source, config, lock files) is left alone.
+ORGANIZABLE_EXTS = frozenset({
+    # Documents
+    ".md", ".pdf", ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt",
+    ".txt", ".rtf", ".odt", ".ods", ".odp",
+    # Data
+    ".csv", ".tsv", ".parquet", ".feather", ".arrow",
+    # Notebooks
+    ".ipynb",
+    # Media
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico",
+    ".mp4", ".mov", ".avi", ".mkv", ".mp3", ".wav",
+    # Archives / deliverables
+    ".zip", ".tar", ".gz", ".bz2", ".7z",
+    # SQL / standalone scripts that aren't part of the project source
+    ".sql",
+})
+
+# Specific filenames that are structural anchors and must never be moved,
+# even if their extension is otherwise organizable.
+STRUCTURAL_NAMES = frozenset({
+    "README.md", "readme.md", "CHANGELOG.md", "changelog.md",
+    "LICENSE", "LICENSE.md", "LICENSE.txt", "NOTICE",
+    "CONTRIBUTING.md", "CODE_OF_CONDUCT.md", "SECURITY.md",
+    "CODEOWNERS", "OWNERS",
+})
+
+# Top-level directory names whose *contents* should not be touched in a code project.
+STRUCTURAL_DIRS = frozenset({
+    "src", "lib", "pkg", "cmd", "internal", "external",
+    "app", "apps", "core",
+    "tests", "test", "spec", "specs", "__tests__",
+    ".github", ".gitlab", ".circleci", "ci", ".ci",
+    "scripts",           # project's own scripts — don't reorganize them
+    "modules",           # nix modules, etc.
+})
+
+
+# ── Project detection ─────────────────────────────────────────────────────────
+
+def detect_code_project(directory: Path) -> str | None:
+    """Return the marker filename if *directory* is a code project root, else None."""
+    for marker in CODE_PROJECT_MARKERS:
+        if (directory / marker).exists():
+            return marker
+    return None
+
+
+def find_project_roots(scan_root: Path, recursive: bool) -> set[Path]:
+    """Return the set of all code-project root directories relevant to *scan_root*.
+
+    Three sources are considered:
+    1. Ancestor directories of *scan_root* — handles the case where the user
+       points the tool at a subdirectory of a project (e.g. ~/proj/docs).
+    2. *scan_root* itself.
+    3. All descendant directories — handles umbrella repos (e.g. ~/code with
+       many individual sub-projects, each with their own pyproject.toml).
+
+    Once a project root is found during descent, its children are not searched
+    further (nested projects inside a project are uncommon and confusing).
+    """
+    roots: set[Path] = set()
+
+    # 1. Check ancestors (nearest first, stop at the first hit)
+    for ancestor in scan_root.parents:
+        if detect_code_project(ancestor):
+            roots.add(ancestor)
+            break   # Only the nearest ancestor matters
+
+    # 2. Check scan_root itself
+    if detect_code_project(scan_root):
+        roots.add(scan_root)
+        # If the root is already a project, skip descendant search — sub-project
+        # detection inside a project is handled by STRUCTURAL_DIRS filtering.
+        return roots
+
+    # 3. Walk descendants (only when recursive)
+    if recursive:
+        for dirpath_str, dirnames, _ in os.walk(scan_root):
+            dirpath = Path(dirpath_str)
+            # Prune ignored dirs in-place so os.walk won't descend into them
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in IGNORE_DIRS and not d.startswith(".")
+            ]
+            if detect_code_project(dirpath):
+                roots.add(dirpath)
+                dirnames.clear()    # Don't look for nested projects inside a project
+
+    return roots
+
+
+def find_enclosing_project(path: Path, project_roots: set[Path]) -> Path | None:
+    """Return the deepest project root that is an ancestor of *path*, or None."""
+    best: Path | None = None
+    for proj_root in project_roots:
+        try:
+            path.relative_to(proj_root)
+        except ValueError:
+            continue
+        # Prefer the deeper (more specific) root
+        if best is None or len(proj_root.parts) > len(best.parts):
+            best = proj_root
+    return best
+
+
+def is_organizable_in_project(path: Path, proj_root: Path) -> bool:
+    """Return True when *path* is a file worth reorganizing inside a code project."""
+    rel   = path.relative_to(proj_root)
+    parts = rel.parts   # e.g. ("docs", "report.pdf") or ("README.md",)
+
+    # Never move structural anchor files
+    if path.name in STRUCTURAL_NAMES:
+        return False
+
+    # Skip files that live inside a structural directory
+    if len(parts) > 1 and parts[0] in STRUCTURAL_DIRS:
+        return False
+
+    # Only include explicitly organizable extensions
+    return path.suffix.lower() in ORGANIZABLE_EXTS
+
 
 # ── Text Extraction ────────────────────────────────────────────────────────────
 
@@ -124,14 +258,46 @@ def extract_snippet(path: Path, max_chars: int = SNIPPET_LEN) -> str | None:
 
 # ── Directory Scanning ─────────────────────────────────────────────────────────
 
-def scan_directory(directory: str, recursive: bool = True) -> list[dict]:
-    """Walk *directory* and build a list of file descriptors with metadata."""
+def scan_directory(
+    directory: str,
+    recursive: bool = True,
+    all_files: bool = False,
+) -> list[dict]:
+    """Walk *directory* and return file descriptors with metadata.
+
+    When *all_files* is False (the default), project-aware filtering is applied:
+
+    - A fast pre-pass discovers all code-project root directories relevant to
+      the scan: ancestor projects (handles scanning inside a project), the root
+      itself, and descendant sub-projects (handles umbrella repos like ~/code).
+    - Each file is matched against its deepest enclosing project root.  Files
+      inside a project are restricted to organizable extensions (docs, data,
+      media) and kept out of structural directories (src/, tests/, …).
+    - Files with no enclosing project root (loose files in a general directory)
+      are included without restriction.
+    """
     root = Path(directory).resolve()
     if not root.is_dir():
         print(f"Error: {root} is not a directory.", file=sys.stderr)
         sys.exit(1)
 
+    # ── Build project-root map ─────────────────────────────────────────────────
+    project_roots: set[Path] = set()
+    if not all_files:
+        project_roots = find_project_roots(root, recursive)
+        if project_roots:
+            labels = [detect_code_project(p) or p.name for p in sorted(project_roots)]
+            print(
+                f"Detected {len(project_roots)} code project(s) "
+                f"({', '.join(labels)}). "
+                "Filtering to organizable assets inside each. "
+                "Pass --all-files to include everything.",
+                file=sys.stderr,
+            )
+
+    # ── Walk files ─────────────────────────────────────────────────────────────
     results: list[dict] = []
+    total_seen = 0
     walk = root.rglob("*") if recursive else root.iterdir()
 
     for path in walk:
@@ -141,6 +307,14 @@ def scan_directory(directory: str, recursive: bool = True) -> list[dict]:
             continue
         if not path.is_file():
             continue
+
+        total_seen += 1
+
+        # Apply per-project filter when relevant
+        if project_roots:
+            proj_root = find_enclosing_project(path, project_roots)
+            if proj_root and not is_organizable_in_project(path, proj_root):
+                continue
 
         try:
             stat = path.stat()
@@ -157,6 +331,15 @@ def scan_directory(directory: str, recursive: bool = True) -> list[dict]:
             "size":    stat.st_size,
             "snippet": snippet or "",
         })
+
+    if project_roots:
+        skipped = total_seen - len(results)
+        if skipped:
+            print(
+                f"Skipped {skipped} source/config file(s). "
+                f"{len(results)} organizable file(s) remain.",
+                file=sys.stderr,
+            )
 
     results.sort(key=lambda f: f["path"])
     return results
@@ -179,10 +362,10 @@ def call_llm(prompt: str) -> str:
         "prompt": prompt,
         "system": SYSTEM_PROMPT,
         "stream": False,
+        "think":  False,          # top-level: suppresses chain-of-thought on qwen3 models
         "options": {
             "temperature": 0.15,
             "num_predict": 1024,
-            "think": False,
         },
     }
     try:
@@ -196,6 +379,8 @@ def call_llm(prompt: str) -> str:
 
 def extract_json(text: str) -> dict | list:
     """Pull the first complete JSON object or array out of *text*."""
+    # Strip <think>…</think> blocks emitted by reasoning models (qwen3, etc.)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
     # Strip optional markdown code fences
     text = re.sub(r"^```(?:json)?\s*", "", text.strip())
     text = re.sub(r"\s*```$", "", text.strip())
@@ -591,6 +776,10 @@ def main() -> None:
     parser.add_argument("--flatten",   action="store_true", help="Flatten nested paths")
     parser.add_argument("--dedupe",    action="store_true", help="Flag near-duplicate files")
     parser.add_argument("--top-level", action="store_true", help="Only scan top-level files (non-recursive)")
+    parser.add_argument(
+        "--all-files", action="store_true",
+        help="Disable code-project filtering: include source, config, and lock files"
+    )
 
     # Apply-mode flags
     parser.add_argument("--dry-run", action="store_true", help="Preview without making changes")
@@ -603,7 +792,7 @@ def main() -> None:
 
     # ── Scan ──────────────────────────────────────────────────────────────────
     if args.scan:
-        files = scan_directory(args.scan, recursive=not args.top_level)
+        files = scan_directory(args.scan, recursive=not args.top_level, all_files=args.all_files)
         print(json.dumps(files, indent=2))
         sys.exit(0)
 
@@ -615,7 +804,7 @@ def main() -> None:
             args.organize = True
             args.dedupe   = True
 
-        files = scan_directory(args.plan, recursive=not args.top_level)
+        files = scan_directory(args.plan, recursive=not args.top_level, all_files=args.all_files)
 
         if not files:
             result: dict = {"root": str(Path(args.plan).resolve()),

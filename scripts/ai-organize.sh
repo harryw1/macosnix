@@ -26,18 +26,20 @@ DO_FLATTEN=false
 DO_DEDUPE=false
 DO_DRY_RUN=false
 DO_TOP_LEVEL=false
+DO_ALL_FILES=false
 FLAGS_GIVEN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --rename)    DO_RENAME=true;    FLAGS_GIVEN=true; shift ;;
-    --organize)  DO_ORGANIZE=true;  FLAGS_GIVEN=true; shift ;;
-    --flatten)   DO_FLATTEN=true;   FLAGS_GIVEN=true; shift ;;
-    --dedupe)    DO_DEDUPE=true;    FLAGS_GIVEN=true; shift ;;
-    --dry-run)   DO_DRY_RUN=true;   shift ;;
-    --top-level) DO_TOP_LEVEL=true; shift ;;
+    --rename)     DO_RENAME=true;     FLAGS_GIVEN=true; shift ;;
+    --organize)   DO_ORGANIZE=true;   FLAGS_GIVEN=true; shift ;;
+    --flatten)    DO_FLATTEN=true;    FLAGS_GIVEN=true; shift ;;
+    --dedupe)     DO_DEDUPE=true;     FLAGS_GIVEN=true; shift ;;
+    --dry-run)    DO_DRY_RUN=true;    shift ;;
+    --top-level)  DO_TOP_LEVEL=true;  shift ;;
+    --all-files)  DO_ALL_FILES=true;  shift ;;
     --help|-h)
-      echo "Usage: ai-organize [DIR] [--rename] [--organize] [--flatten] [--dedupe] [--dry-run] [--top-level]"
+      echo "Usage: ai-organize [DIR] [--rename] [--organize] [--flatten] [--dedupe] [--dry-run] [--top-level] [--all-files]"
       echo ""
       echo "  --rename      Suggest more-descriptive filenames"
       echo "  --organize    Propose a logical folder structure"
@@ -45,6 +47,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --dedupe      Flag files with near-identical content"
       echo "  --dry-run     Preview changes without applying them"
       echo "  --top-level   Scan only the top-level directory (non-recursive)"
+      echo "  --all-files   Include source/config files (skipped by default in code projects)"
       exit 0
       ;;
     -*)
@@ -136,6 +139,7 @@ $DO_ORGANIZE  && PY_FLAGS="$PY_FLAGS --organize"
 $DO_FLATTEN   && PY_FLAGS="$PY_FLAGS --flatten"
 $DO_DEDUPE    && PY_FLAGS="$PY_FLAGS --dedupe"
 $DO_TOP_LEVEL && PY_FLAGS="$PY_FLAGS --top-level"
+$DO_ALL_FILES && PY_FLAGS="$PY_FLAGS --all-files"
 
 ensure_ollama
 
