@@ -82,6 +82,7 @@ in
       aie    = "ai-explain";   # AI explanation of commands/errors
       aicmd  = "ai-cmd";       # Natural language → shell command (ollama)
       aichat = "ai-chat";      # RAG chat over indexed codebase (ollama)
+      ais    = "ai-search";    # Semantic file search (ollama)
       
       # ── Markdown conversion (mdconvert: python-docx + WeasyPrint) ────────────
       # Report style (navy/gold palette, cover page)
