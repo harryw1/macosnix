@@ -10,7 +10,7 @@ set -euo pipefail
 
 # ── Source shared library ────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../lib/common.sh"
+source "${AI_LIB_PATH:-${SCRIPT_DIR}/../lib}/common.sh"
 
 MODEL="${OLLAMA_MODEL:-$(load_config_value models reasoning "lfm2.5-thinking:1.2b")}"
 # ── Help ─────────────────────────────────────────────────────────────────────

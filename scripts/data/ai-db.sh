@@ -13,7 +13,7 @@ set -euo pipefail
 
 # ── Source shared library ────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../lib/common.sh"
+source "${AI_LIB_PATH:-${SCRIPT_DIR}/../lib}/common.sh"
 
 PY_SCRIPT="${AI_DB_PY_PATH:-$SCRIPT_DIR/ai-db.py}"
 

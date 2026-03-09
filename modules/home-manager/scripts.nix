@@ -549,6 +549,7 @@ README
   ai-search = pkgs.writeShellScriptBin "ai-search" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
     export AI_SEARCH_PY_PATH="${../../scripts/search/ai-search.py}"
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/search/ai-search.sh}" "$@"
   '';
 
@@ -566,30 +567,36 @@ README
   '';
 
   ai-narrative = pkgs.writeShellScriptBin "ai-narrative" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/gen/ai-narrative.sh}" "$@"
   '';
 
   ai-duck = pkgs.writeShellScriptBin "ai-duck" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/data/ai-duck.sh}" "$@"
   '';
 
   ai-slide-copy = pkgs.writeShellScriptBin "ai-slide-copy" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/gen/ai-slide-copy.sh}" "$@"
   '';
 
   ai-organize = pkgs.writeShellScriptBin "ai-organize" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
     export AI_ORGANIZE_PY_PATH="${../../scripts/data/ai-organize.py}"
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/data/ai-organize.sh}" "$@"
   '';
 
   ai-db = pkgs.writeShellScriptBin "ai-db" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
     export AI_DB_PY_PATH="${../../scripts/data/ai-db.py}"
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/data/ai-db.sh}" "$@"
   '';
 
   ai-config = pkgs.writeShellScriptBin "ai-config" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/ai-config.sh}" "$@"
   '';
 

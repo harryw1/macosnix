@@ -14,7 +14,7 @@ set -euo pipefail
 
 # ── Source shared library ────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/lib/common.sh"
+source "${AI_LIB_PATH:-${SCRIPT_DIR}/lib}/common.sh"
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ai-scripts"
 CONFIG_FILE="$CONFIG_DIR/config.toml"

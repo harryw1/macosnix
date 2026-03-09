@@ -14,7 +14,7 @@ set -euo pipefail
 
 # ── Source shared library ────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/../lib/common.sh"
+source "${AI_LIB_PATH:-${SCRIPT_DIR}/../lib}/common.sh"
 
 MODEL="${OLLAMA_MODEL:-$(load_config_value models chat "qwen3.5:9b")}"
 EMBED_MODEL="${OLLAMA_MODEL_EMBED:-$(load_config_value models embed "qwen3-embedding:0.6b")}"

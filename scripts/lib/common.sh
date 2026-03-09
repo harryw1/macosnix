@@ -3,7 +3,11 @@
 #
 # Source this file at the top of any ai-* script:
 #   SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-#   source "${SCRIPT_DIR}/../lib/common.sh"   # adjust path as needed
+#   source "${AI_LIB_PATH:-${SCRIPT_DIR}/../lib}/common.sh"
+#
+# AI_LIB_PATH is set by the nix wrappers in scripts.nix to resolve the
+# lib directory inside the nix store.  The fallback keeps direct invocation
+# (e.g. `bash scripts/git/ai-commit.sh`) working as before.
 #
 # Provides:
 #   ensure_ollama [model]       Start Ollama if needed; optionally verify a model is pulled
