@@ -75,15 +75,27 @@ in
       ty    = "uvx pyright";  # Astral-style type checking interface
       nb    = "uvx marimo edit";  # Start marimo notebook editor (via uvx)
       ipy   = "uvx ipython";  # Enhanced interactive Python REPL (via uvx)
-      pyinit = "pyinit";      # Calls our robust scaffolding script
       j     = "just";          # Shorthand for justfile tasks
       wt    = "watchexec";    # Watch files and re-run commands on change
+      ri    = "report-init";  # Scaffold a research / report project
+
+      # ── AI Tools (ollama) ────────────────────────────────────────────────
       ol     = "ollama-pull";  # One-step model setup
-      aie    = "ai-explain";   # AI explanation of commands/errors
-      aicmd  = "ai-cmd";       # Natural language → shell command (ollama)
-      aichat = "ai-chat";      # RAG chat over indexed codebase (ollama)
-      ais    = "ai-search";    # Semantic file search (ollama)
+      aih    = "ai-help";      # List all ai-* tools
+      aie    = "ai-explain";   # Explain a command or error
+      aicmd  = "ai-cmd";       # Natural language → shell command
+      aichat = "ai-chat";      # RAG chat over indexed codebase
+      ais    = "ai-search";    # Semantic file search
+      ain    = "ai-narrative"; # Data → report prose
+      aid    = "ai-duck";      # Ask questions about data files (DuckDB)
+      aisc   = "ai-slide-copy"; # Data → slide copy
+      aio    = "ai-organize";  # AI file reorganizer / renamer / deduplicator
       
+      # ── Data & System ─────────────────────────────────────────────────────
+      duck  = "duckdb";        # DuckDB CLI
+      bt    = "btop";          # System monitor
+      ff    = "fastfetch";     # System info
+
       # ── Markdown conversion (mdconvert: python-docx + WeasyPrint) ────────────
       # Report style (navy/gold palette, cover page)
       md2docx = "mdconvert -f docx";       # md2docx report.md  → report.docx
