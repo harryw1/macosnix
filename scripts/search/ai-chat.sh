@@ -10,8 +10,40 @@
 #   ai-chat              # interactive prompt via gum
 set -euo pipefail
 
+# ── Portable clipboard ────────────────────────────────────────────────────────
+_clip_copy() {
+  if command -v pbcopy >/dev/null 2>&1; then
+    pbcopy
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard
+  elif command -v wl-copy >/dev/null 2>&1; then
+    wl-copy
+  else
+    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
+    return 1
+  fi
+}
+
 EMBED_MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:0.6b}"
 CHAT_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# ── Help ─────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'HELP'
+ai-chat — RAG chat over your indexed codebase, powered by Ollama
+
+Usage:
+  ai-chat "what font does my kitty config use?"
+  ai-chat "where are my zsh aliases defined?"
+  ai-chat                # interactive prompt via gum
+
+Requires: ai-search --index <dir> first to build the vector database.
+
+Environment:
+  OLLAMA_MODEL           Chat model (default: qwen3.5:9b)
+  OLLAMA_MODEL_EMBED     Embedding model (default: qwen3-embedding:0.6b)
+HELP
+  exit 0
+fi
 
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 DB_PATH="$XDG_DATA_HOME/ai-search/vectors.db"
@@ -42,9 +74,16 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
+  _tries=0
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
     echo -n "."
+    _tries=$((_tries + 1))
+    if [ "$_tries" -ge 30 ]; then
+      echo ""
+      echo " Ollama failed to start after 30 s. Is the app installed?"
+      exit 1
+    fi
   done
   echo " ready!"
 fi
@@ -152,7 +191,7 @@ case "$ACTION" in
   exec bash "${BASH_SOURCE[0]}"
   ;;
 "󰆏  Copy answer to clipboard")
-  printf '%s' "$ANSWER" | pbcopy
+  printf '%s' "$ANSWER" | _clip_copy
   gum style "  Copied to clipboard!"
   ;;
 "  Abort")

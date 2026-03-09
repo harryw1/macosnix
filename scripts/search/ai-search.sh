@@ -28,6 +28,9 @@ if [ $# -eq 0 ]; then
   echo "       ai-search --index <directory>"
   echo "       ai-search --status"
   echo "       ai-search --clear"
+  echo ""
+  echo "Environment:"
+  echo "  OLLAMA_MODEL_EMBED   Embedding model (default: qwen3-embedding:0.6b)"
   exit 1
 fi
 
@@ -48,6 +51,19 @@ while [[ $# -gt 0 ]]; do
     --clear|-c)
       DO_CLEAR=true
       shift
+      ;;
+    --help|-h)
+      echo "ai-search — Semantic local search powered by Ollama and sqlite-vec"
+      echo ""
+      echo "Usage:"
+      echo "  ai-search <query>              Search indexed files"
+      echo "  ai-search --index <directory>  Index a directory"
+      echo "  ai-search --status             Show database stats"
+      echo "  ai-search --clear              Delete the search database"
+      echo ""
+      echo "Environment:"
+      echo "  OLLAMA_MODEL_EMBED   Embedding model (default: qwen3-embedding:0.6b)"
+      exit 0
       ;;
     -*)
       echo "Unknown option $1"
@@ -70,9 +86,16 @@ ensure_ollama() {
     echo "󰚩 Starting Ollama..."
     open -a Ollama
     echo -n "Waiting for Ollama"
+    _tries=0
     while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
       sleep 1
       echo -n "."
+      _tries=$((_tries + 1))
+      if [ "$_tries" -ge 30 ]; then
+        echo ""
+        echo " Ollama failed to start after 30 s. Is the app installed?"
+        exit 1
+      fi
     done
     echo " ready!"
   fi

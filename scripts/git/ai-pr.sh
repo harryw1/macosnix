@@ -4,7 +4,35 @@
 # `ai-pr` / `aipr` command.
 set -euo pipefail
 
+# ── Portable clipboard ────────────────────────────────────────────────────────
+_clip_copy() {
+  if command -v pbcopy >/dev/null 2>&1; then
+    pbcopy
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard
+  elif command -v wl-copy >/dev/null 2>&1; then
+    wl-copy
+  else
+    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
+    return 1
+  fi
+}
+
 MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# ── Help ─────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'HELP'
+ai-pr — generate a GitHub PR description from commits and diff using Ollama
+
+Usage:
+  ai-pr                  # run from a feature branch
+
+Environment:
+  OLLAMA_MODEL           Chat model (default: qwen3.5:9b)
+  AIPR_BASE              Override base branch detection (e.g. AIPR_BASE=main ai-pr)
+HELP
+  exit 0
+fi
 
 # ── Guard: must be inside a git repo ──────────────────────────────────────────
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
@@ -58,9 +86,16 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
+  _tries=0
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
     echo -n "."
+    _tries=$((_tries + 1))
+    if [ "$_tries" -ge 30 ]; then
+      echo ""
+      echo " Ollama failed to start after 30 s. Is the app installed?"
+      exit 1
+    fi
   done
   echo " ready!"
 fi
@@ -123,9 +158,21 @@ gum spin --title "󰚩  Generating PR description with $MODEL..." -- \
     -H "Content-Type: application/json" \
     -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
-RAW=$(python3 -c \
-  "import json, os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" \
-  2>/dev/null || true)
+RAW=$(python3 -c "
+import json, os, sys
+try:
+    with open(os.environ['MSG_FILE']) as f:
+        d = json.load(f)
+    if 'error' in d:
+        print('Ollama error: ' + d['error'], file=sys.stderr)
+    print(d.get('response', ''))
+except Exception as e:
+    with open(os.environ['MSG_FILE']) as f:
+        raw = f.read()[:200]
+    print(f'Failed to parse Ollama response: {e}', file=sys.stderr)
+    if raw:
+        print(f'Raw response: {raw}', file=sys.stderr)
+" 2>&1 || true)
 
 # Strip any <think>…</think> blocks the model might emit
 PR_TEXT=$(printf '%s' "$RAW" | awk '
@@ -175,11 +222,14 @@ ACTION=$(gum choose \
 
 case "$ACTION" in
 "  Push & open PR with gh")
-  git push -u origin "$CURRENT_BRANCH"
+  if ! git push -u origin "$CURRENT_BRANCH"; then
+    echo " Push failed. Check your remote configuration and try again."
+    exit 1
+  fi
   gh pr create --title "$PR_TITLE" --body "$PR_BODY"
   ;;
 "󰆏  Copy to clipboard")
-  printf 'Title: %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | pbcopy
+  printf 'Title: %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | _clip_copy
   gum style "  Copied to clipboard!"
   ;;
 "󰏫  Edit then open PR")
@@ -190,7 +240,10 @@ case "$ACTION" in
   EDITED_BODY=$(grep -v '^TITLE:' "$TMPFILE" | sed '1{/^[[:space:]]*$/d}')
   rm -f "$TMPFILE"
   if [ -n "$EDITED_TITLE" ]; then
-    git push -u origin "$CURRENT_BRANCH"
+    if ! git push -u origin "$CURRENT_BRANCH"; then
+      echo " Push failed. Check your remote configuration and try again."
+      exit 1
+    fi
     gh pr create --title "$EDITED_TITLE" --body "$EDITED_BODY"
   else
     echo "Aborted (empty title)."

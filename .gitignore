@@ -20,5 +20,10 @@ result-*
 .env
 .env.local
 
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Claude
 .claude/

@@ -73,6 +73,10 @@ while [[ $# -gt 0 ]]; do
     echo "  --dry-run     Preview changes without applying them"
     echo "  --top-level   Scan only the top-level directory (non-recursive)"
     echo "  --all-files   Include source/config files (skipped by default in code projects)"
+    echo ""
+    echo "Environment:"
+    echo "  OLLAMA_MODEL         Chat model (default: qwen3.5:9b)"
+    echo "  OLLAMA_MODEL_EMBED   Embedding model (default: qwen3-embedding:0.6b)"
     exit 0
     ;;
   -*)
@@ -94,9 +98,16 @@ ensure_ollama() {
     echo "󰚩 Starting Ollama..."
     open -a Ollama
     echo -n "  Waiting for Ollama"
+    _tries=0
     while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
       sleep 1
       echo -n "."
+      _tries=$((_tries + 1))
+      if [ "$_tries" -ge 30 ]; then
+        echo ""
+        echo " Ollama failed to start after 30 s. Is the app installed?"
+        exit 1
+      fi
     done
     echo " ready!"
   fi

@@ -5,6 +5,20 @@
 set -euo pipefail
 
 MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# ── Help ─────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'HELP'
+git-ai-commit — generate conventional commit messages with Ollama
+
+Usage:
+  git-ai-commit          # interactive: review diff, pick action
+  gaic                   # alias (same command)
+
+Environment:
+  OLLAMA_MODEL           Chat model (default: qwen3.5:9b)
+HELP
+  exit 0
+fi
 
 # ── Guard: must be inside a git repo ──────────────────────────────────────────
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
@@ -24,9 +38,16 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
+  _tries=0
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
     echo -n "."
+    _tries=$((_tries + 1))
+    if [ "$_tries" -ge 30 ]; then
+      echo ""
+      echo " Ollama failed to start after 30 s. Is the app installed?"
+      exit 1
+    fi
   done
   echo " ready!"
 fi
@@ -93,7 +114,22 @@ gum spin --title "󰚩  Generating commit message with $MODEL..." -- \
   sh -c 'curl -s http://localhost:11434/api/generate -H "Content-Type: application/json" -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
 # Parse response; fall back to awk anchor on commit type if model ignored think:false
-RAW=$(python3 -c "import json,sys,os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" 2>/dev/null || true)
+RAW=$(python3 -c "
+import json, os, sys
+try:
+    with open(os.environ['MSG_FILE']) as f:
+        d = json.load(f)
+    if 'error' in d:
+        print('Ollama error: ' + d['error'], file=sys.stderr)
+    print(d.get('response', ''))
+except Exception as e:
+    # Show the raw file content for debugging
+    with open(os.environ['MSG_FILE']) as f:
+        raw = f.read()[:200]
+    print(f'Failed to parse Ollama response: {e}', file=sys.stderr)
+    if raw:
+        print(f'Raw response: {raw}', file=sys.stderr)
+" 2>&1 || true)
 COMMIT_MSG=$(printf '%s' "$RAW" |
   awk '
       /<think>/        { xml=1 }
@@ -148,7 +184,7 @@ case "$ACTION" in
   gum style "  Committed (staged only)!"
   git log --oneline -1
   ;;
-"󰏫   Edit then commit")
+"󰏫  Edit then commit")
   TMPFILE=$(mktemp)
   printf '%s\n' "$COMMIT_MSG" >"$TMPFILE"
   "${EDITOR:-nvim}" "$TMPFILE"

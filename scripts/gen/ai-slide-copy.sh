@@ -8,7 +8,37 @@
 #   ai-slide-copy report.txt                  # pass a text/CSV file path directly
 set -euo pipefail
 
+# ── Portable clipboard ────────────────────────────────────────────────────────
+_clip_copy() {
+  if command -v pbcopy >/dev/null 2>&1; then
+    pbcopy
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard
+  elif command -v wl-copy >/dev/null 2>&1; then
+    wl-copy
+  else
+    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
+    return 1
+  fi
+}
+
 MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# ── Help ─────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'HELP'
+ai-slide-copy — generate slide titles, bullets, and speaker notes from data/metrics
+
+Usage:
+  ai-slide-copy                              # interactive: paste data via gum
+  ai-slide-copy "Revenue: $2.3M, +12% YoY"  # inline metrics
+  cat summary.txt | ai-slide-copy            # pipe a file or command output
+  ai-slide-copy report.txt                   # pass a text/CSV file path directly
+
+Environment:
+  OLLAMA_MODEL           Chat model (default: qwen3.5:9b)
+HELP
+  exit 0
+fi
 
 # ── Gather input ───────────────────────────────────────────────────────────────
 DATA_INPUT=""
@@ -58,9 +88,16 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
+  _tries=0
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
     echo -n "."
+    _tries=$((_tries + 1))
+    if [ "$_tries" -ge 30 ]; then
+      echo ""
+      echo " Ollama failed to start after 30 s. Is the app installed?"
+      exit 1
+    fi
   done
   echo " ready!"
 fi
@@ -168,7 +205,7 @@ try:
 except Exception as e:
     print(f'Error parsing response: {e}', file=sys.stderr)
     sys.exit(1)
-" 2>/dev/null || true)
+" 2>&1 || true)
 
 if [ -z "$SLIDES" ]; then
   echo " No content generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
@@ -198,7 +235,7 @@ ACTION=$(gum choose \
 
 case "$ACTION" in
 "󰆏  Copy all to clipboard")
-  printf '%s' "$SLIDES" | pbcopy
+  printf '%s' "$SLIDES" | _clip_copy
   gum style "  Copied to clipboard — paste into your deck!"
   ;;
 "󰏫  Review and edit, then copy")
@@ -208,7 +245,7 @@ case "$ACTION" in
   EDITED=$(cat "$TMPFILE")
   rm -f "$TMPFILE"
   if [ -n "$EDITED" ]; then
-    printf '%s' "$EDITED" | pbcopy
+    printf '%s' "$EDITED" | _clip_copy
     gum style "  Edited content copied to clipboard!"
   else
     echo "Aborted (empty content)."
@@ -226,7 +263,9 @@ case "$ACTION" in
   fi
   ;;
 "󰑐  Regenerate")
-  exec bash "${BASH_SOURCE[0]}" "$@"
+  _REGEN_FILE=$(mktemp)
+  printf '%s' "$DATA_INPUT" > "$_REGEN_FILE"
+  exec bash "${BASH_SOURCE[0]}" "$_REGEN_FILE"
   ;;
 "  Abort")
   echo "Aborted."

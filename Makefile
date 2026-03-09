@@ -66,25 +66,25 @@ fmt: ## Format all Nix files (requires nixfmt-rfc-style)
 	$(NIX) run nixpkgs#nixfmt-rfc-style -- flake.nix $$(find modules -name '*.nix')
 
 git: ## Use ollama to analyse changes and write a conventional commit message
-	@bash "$(CURDIR)/scripts/git-ai-commit.sh"
+	@bash "$(CURDIR)/scripts/git/ai-commit.sh"
 
 explain: ## Use ollama to explain a command or error
-	@bash "$(CURDIR)/scripts/ai-explain.sh"
+	@bash "$(CURDIR)/scripts/gen/ai-explain.sh"
 
 pr: ## Use ollama to generate a GitHub PR description
-	@bash "$(CURDIR)/scripts/ai-pr.sh"
+	@bash "$(CURDIR)/scripts/git/ai-pr.sh"
 
 cmd: ## Use ollama to generate a shell command from natural language
-	@bash "$(CURDIR)/scripts/ai-cmd.sh"
+	@bash "$(CURDIR)/scripts/gen/ai-cmd.sh"
 
 chat: ## Ask a question about your indexed codebase (RAG)
-	@AI_SEARCH_PY_PATH="$(CURDIR)/scripts/ai-search.py" \
-	 AI_CHAT_PY_PATH="$(CURDIR)/scripts/ai-chat.py" \
-	 bash "$(CURDIR)/scripts/ai-chat.sh"
+	@AI_SEARCH_PY_PATH="$(CURDIR)/scripts/search/ai-search.py" \
+	 AI_CHAT_PY_PATH="$(CURDIR)/scripts/search/ai-chat.py" \
+	 bash "$(CURDIR)/scripts/search/ai-chat.sh"
 
 organize: ## AI-powered file reorganizer, renamer, and deduplicator
-	@AI_ORGANIZE_PY_PATH="$(CURDIR)/scripts/ai-organize.py" \
-	 bash "$(CURDIR)/scripts/ai-organize.sh" $(if $(DIR),$(DIR),)
+	@AI_ORGANIZE_PY_PATH="$(CURDIR)/scripts/data/ai-organize.py" \
+	 bash "$(CURDIR)/scripts/data/ai-organize.sh" $(if $(DIR),$(DIR),)
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) \

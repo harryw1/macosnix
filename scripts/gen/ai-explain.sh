@@ -9,6 +9,22 @@
 set -euo pipefail
 
 MODEL="${OLLAMA_MODEL:-lfm2.5-thinking:1.2b}"
+# ── Help ─────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'HELP'
+ai-explain — explain a shell command or error in plain English using Ollama
+
+Usage:
+  ai-explain "git rebase -i HEAD~3"          # explain a command
+  ai-explain "permission denied: /etc/hosts"  # explain an error
+  some-cmd 2>&1 | ai-explain                  # pipe output/error directly
+  ai-explain "cargo build" "error[E0382]…"   # cmd + its output as two args
+
+Environment:
+  OLLAMA_MODEL           Chat model (default: lfm2.5-thinking:1.2b)
+HELP
+  exit 0
+fi
 
 # ── Gather input ───────────────────────────────────────────────────────────────
 CMD_INPUT=""
@@ -45,9 +61,16 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
+  _tries=0
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
     echo -n "."
+    _tries=$((_tries + 1))
+    if [ "$_tries" -ge 30 ]; then
+      echo ""
+      echo " Ollama failed to start after 30 s. Is the app installed?"
+      exit 1
+    fi
   done
   echo " ready!"
 fi
@@ -123,7 +146,7 @@ try:
 except Exception as e:
     print(f'Error parsing response: {e}')
     sys.exit(1)
-" 2>/dev/null || true)
+" 2>&1 || true)
 
 if [ -z "$EXPLANATION" ]; then
   echo " No explanation generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"

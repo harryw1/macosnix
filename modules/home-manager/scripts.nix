@@ -523,50 +523,54 @@ README
   # `make git` can call it directly (before `make switch` has been run) while
   # this nix-installed binary makes `gaic` available system-wide afterwards.
   git-ai-commit = pkgs.writeShellScriptBin "git-ai-commit" ''
-    exec bash "${../../scripts/git-ai-commit.sh}" "$@"
+    exec bash "${../../scripts/git/ai-commit.sh}" "$@"
   '';
 
   ai-explain = pkgs.writeShellScriptBin "ai-explain" ''
-    exec bash "${../../scripts/ai-explain.sh}" "$@"
+    exec bash "${../../scripts/gen/ai-explain.sh}" "$@"
   '';
 
   ai-pr = pkgs.writeShellScriptBin "ai-pr" ''
-    exec bash "${../../scripts/ai-pr.sh}" "$@"
+    exec bash "${../../scripts/git/ai-pr.sh}" "$@"
   '';
 
   ai-search = pkgs.writeShellScriptBin "ai-search" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
-    export AI_SEARCH_PY_PATH="${../../scripts/ai-search.py}"
-    exec bash "${../../scripts/ai-search.sh}" "$@"
+    export AI_SEARCH_PY_PATH="${../../scripts/search/ai-search.py}"
+    exec bash "${../../scripts/search/ai-search.sh}" "$@"
   '';
 
   ai-cmd = pkgs.writeShellScriptBin "ai-cmd" ''
-    exec bash "${../../scripts/ai-cmd.sh}" "$@"
+    exec bash "${../../scripts/gen/ai-cmd.sh}" "$@"
   '';
 
   ai-chat = pkgs.writeShellScriptBin "ai-chat" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
-    export AI_CHAT_PY_PATH="${../../scripts/ai-chat.py}"
-    export AI_SEARCH_PY_PATH="${../../scripts/ai-search.py}"
-    exec bash "${../../scripts/ai-chat.sh}" "$@"
+    export AI_CHAT_PY_PATH="${../../scripts/search/ai-chat.py}"
+    export AI_SEARCH_PY_PATH="${../../scripts/search/ai-search.py}"
+    exec bash "${../../scripts/search/ai-chat.sh}" "$@"
   '';
 
   ai-narrative = pkgs.writeShellScriptBin "ai-narrative" ''
-    exec bash "${../../scripts/ai-narrative.sh}" "$@"
+    exec bash "${../../scripts/gen/ai-narrative.sh}" "$@"
   '';
 
   ai-duck = pkgs.writeShellScriptBin "ai-duck" ''
-    exec bash "${../../scripts/ai-duck.sh}" "$@"
+    exec bash "${../../scripts/data/ai-duck.sh}" "$@"
   '';
 
   ai-slide-copy = pkgs.writeShellScriptBin "ai-slide-copy" ''
-    exec bash "${../../scripts/ai-slide-copy.sh}" "$@"
+    exec bash "${../../scripts/gen/ai-slide-copy.sh}" "$@"
   '';
 
   ai-organize = pkgs.writeShellScriptBin "ai-organize" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
-    export AI_ORGANIZE_PY_PATH="${../../scripts/ai-organize.py}"
-    exec bash "${../../scripts/ai-organize.sh}" "$@"
+    export AI_ORGANIZE_PY_PATH="${../../scripts/data/ai-organize.py}"
+    exec bash "${../../scripts/data/ai-organize.sh}" "$@"
+  '';
+
+  ai-help = pkgs.writeShellScriptBin "ai-help" ''
+    exec bash "${../../scripts/ai-help.sh}" "$@"
   '';
 
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
@@ -579,8 +583,14 @@ README
       open -a Ollama
       # Wait for Ollama to start
       echo "Waiting for Ollama to start..."
+      _tries=0
       while ! curl -s http://localhost:11434/api/tags > /dev/null; do
         sleep 1
+        _tries=$((_tries + 1))
+        if [ "$_tries" -ge 30 ]; then
+          echo "Ollama failed to start after 30 s."
+          exit 1
+        fi
       done
     fi
 
@@ -611,5 +621,6 @@ in
     ai-duck
     ai-slide-copy
     ai-organize
+    ai-help
   ];
 }

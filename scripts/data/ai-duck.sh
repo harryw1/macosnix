@@ -8,7 +8,37 @@
 #   ai-duck report.parquet "monthly totals" # works with Parquet, JSON, TSV too
 set -euo pipefail
 
+# ── Portable clipboard ────────────────────────────────────────────────────────
+_clip_copy() {
+  if command -v pbcopy >/dev/null 2>&1; then
+    pbcopy
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard
+  elif command -v wl-copy >/dev/null 2>&1; then
+    wl-copy
+  else
+    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
+    return 1
+  fi
+}
+
 MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# ── Help ─────────────────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  cat <<'HELP'
+ai-duck — ask plain-English questions about a data file using DuckDB + Ollama
+
+Usage:
+  ai-duck                                 # interactive: pick file and type question
+  ai-duck data.csv                        # interactive question for a given file
+  ai-duck data.csv "top 5 by revenue"     # fully inline
+  ai-duck report.parquet "monthly totals" # works with Parquet, JSON, TSV too
+
+Environment:
+  OLLAMA_MODEL           Chat model (default: qwen3.5:9b)
+HELP
+  exit 0
+fi
 
 # ── Check duckdb is available ──────────────────────────────────────────────────
 if ! command -v duckdb >/dev/null 2>&1; then
@@ -70,9 +100,16 @@ if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
   echo "󰚩 Starting Ollama..."
   open -a Ollama
   echo -n "Waiting for Ollama"
+  _tries=0
   while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
     sleep 1
     echo -n "."
+    _tries=$((_tries + 1))
+    if [ "$_tries" -ge 30 ]; then
+      echo ""
+      echo " Ollama failed to start after 30 s. Is the app installed?"
+      exit 1
+    fi
   done
   echo " ready!"
 fi
@@ -135,9 +172,21 @@ gum spin --title "󰚩  Generating query with $MODEL..." -- \
     -H "Content-Type: application/json" \
     -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
-RAW=$(python3 -c \
-  "import json, os; d=json.load(open(os.environ['MSG_FILE'])); print(d.get('response',''))" \
-  2>/dev/null || true)
+RAW=$(python3 -c "
+import json, os, sys
+try:
+    with open(os.environ['MSG_FILE']) as f:
+        d = json.load(f)
+    if 'error' in d:
+        print('Ollama error: ' + d['error'], file=sys.stderr)
+    print(d.get('response', ''))
+except Exception as e:
+    with open(os.environ['MSG_FILE']) as f:
+        raw = f.read()[:200]
+    print(f'Failed to parse Ollama response: {e}', file=sys.stderr)
+    if raw:
+        print(f'Raw response: {raw}', file=sys.stderr)
+" 2>&1 || true)
 
 # Strip any <think>…</think> blocks
 CLEAN=$(printf '%s' "$RAW" | awk '
@@ -205,7 +254,7 @@ run_query() {
 
   case "$POST" in
   "󰆏  Copy results to clipboard")
-    printf '%s' "$RESULTS" | pbcopy
+    printf '%s' "$RESULTS" | _clip_copy
     gum style "  Copied to clipboard!"
     ;;
   "󰈙  Save results to CSV")
