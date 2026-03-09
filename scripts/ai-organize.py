@@ -981,76 +981,90 @@ def _refine_dominant_clusters(
     labels: np.ndarray,
     auto_names: dict[int, str],
     total_files: int,
+    max_depth: int = 6,
 ) -> dict[int, str]:
-    """Detect when one auto-named folder dominates and sub-name its clusters.
+    """Recursively refine auto-names until no single folder dominates.
 
     Problem: if 80% of files are under ``backups/``, every cluster whose
     dominant top-level dir is ``backups`` gets named "backups" — which just
     recreates the original structure.  This function detects that and tries
-    naming those clusters using the *second* directory level (depth=2), giving
-    names like ``backups/pi_migration``, ``backups/website``, etc.
+    progressively deeper path prefixes (depth 2, 3, 4, …) until the
+    dominant folder's share drops below the threshold.
 
-    If the second level still doesn't disambiguate (e.g. all files are
-    ``backups/data/…``), the label is removed so the LLM can name it instead.
+    Example progression for ``backups/pi_migration/var/www/publicpresence``:
+      depth 1: "backups"                              → still 92%
+      depth 2: "backups/pi_migration"                 → still 80%
+      depth 3: "backups/pi_migration/var"             → still 60%
+      depth 4: "backups/pi_migration/var/www"         → drops below 40% ✓
+
+    If a cluster can't be refined (files are too shallow), the label is
+    removed so the LLM can name it instead.
     """
     from collections import Counter
 
     if not auto_names or total_files == 0:
         return auto_names
 
-    # Count how many files each auto-name covers
-    name_file_counts: Counter[str] = Counter()
-    for label, name in auto_names.items():
-        n = int(np.sum(labels == label))
-        name_file_counts[name] += n
-
     refined = dict(auto_names)
-    for name, count in name_file_counts.items():
-        if count / total_files <= DOMINANT_FOLDER_THRESHOLD:
-            continue
 
-        print(
-            f"  Dominant folder '{name}' covers {count}/{total_files} files "
-            f"({count*100//total_files}%) — refining with depth-2 sub-names…",
-            file=sys.stderr,
-        )
+    for depth in range(2, max_depth + 1):
+        # Recount how many files each name covers in the current refined state
+        name_file_counts: Counter[str] = Counter()
+        for label, name in refined.items():
+            n = int(np.sum(labels == label))
+            name_file_counts[name] += n
 
-        # Re-name just the clusters currently mapped to this dominant name
-        dominant_labels = [lbl for lbl, n in auto_names.items() if n == name]
+        # Find names that still dominate
+        dominant_names = [
+            name for name, count in name_file_counts.items()
+            if count / total_files > DOMINANT_FOLDER_THRESHOLD
+        ]
+        if not dominant_names:
+            break  # No concentration problem — done
 
-        for lbl in dominant_labels:
-            indices = np.where(labels == lbl)[0]
-            # Try depth=2 for this cluster
-            dir_counter: Counter[str] = Counter()
-            for idx in indices:
-                parts = files[idx]["path"].split("/")
-                if len(parts) > 2:
-                    dir_counter["/".join(parts[:2])] += 1
+        for dom_name in dominant_names:
+            dom_count = name_file_counts[dom_name]
+            print(
+                f"  Dominant folder '{dom_name}' covers {dom_count}/{total_files} files "
+                f"({dom_count*100//total_files}%) — refining at depth {depth}…",
+                file=sys.stderr,
+            )
+
+            # Find clusters currently mapped to this dominant name
+            dom_labels = [lbl for lbl, n in refined.items() if n == dom_name]
+
+            for lbl in dom_labels:
+                indices = np.where(labels == lbl)[0]
+                dir_counter: Counter[str] = Counter()
+                for idx in indices:
+                    parts = files[idx]["path"].split("/")
+                    if len(parts) > depth:
+                        dir_counter["/".join(parts[:depth])] += 1
+                    else:
+                        dir_counter["_shallow_"] += 1
+
+                if not dir_counter:
+                    continue
+
+                best_dir, best_count = dir_counter.most_common(1)[0]
+                pct = best_count / len(indices)
+
+                if best_dir == "_shallow_" or pct < 0.5:
+                    # Can't go deeper — remove so LLM names it
+                    del refined[lbl]
+                    print(
+                        f"    Cluster {lbl}: depth-{depth} inconclusive, deferring to LLM.",
+                        file=sys.stderr,
+                    )
+                elif best_dir == dom_name:
+                    # Same prefix as before — try next depth on next iteration
+                    pass
                 else:
-                    dir_counter["_shallow_"] += 1
-
-            if not dir_counter:
-                continue
-
-            best_dir, best_count = dir_counter.most_common(1)[0]
-            pct = best_count / len(indices)
-
-            if best_dir == "_shallow_" or pct < 0.5:
-                # Depth-2 doesn't help — remove so LLM names it
-                del refined[lbl]
-                print(
-                    f"    Cluster {lbl}: depth-2 inconclusive, deferring to LLM.",
-                    file=sys.stderr,
-                )
-            elif best_dir == name:
-                # Depth-2 gave the same prefix (shouldn't happen but guard)
-                del refined[lbl]
-            else:
-                refined[lbl] = best_dir
-                print(
-                    f"    Cluster {lbl}: refined '{name}' → '{best_dir}' ({pct:.0%})",
-                    file=sys.stderr,
-                )
+                    refined[lbl] = best_dir
+                    print(
+                        f"    Cluster {lbl}: refined → '{best_dir}' ({pct:.0%})",
+                        file=sys.stderr,
+                    )
 
     return refined
 
@@ -1095,17 +1109,27 @@ def assign_files_to_clusters(
     # Track which disambiguated dsts are still colliding so we can escalate
     for _idx, src, dst, folder in raw_moves:
         if dst in colliding_dsts:
-            # Disambiguate using up to 2 leading components of the source
-            # path.  Full source paths create absurdly deep nesting like
-            # "backups/backups/pi_migration/var/www/…".  Two components are
-            # almost always enough to uniquely identify the origin project
-            # (e.g. "backups/pi_migration") without burying the file.
-            src_parts = Path(src).parts  # ('backups','pi_migration','var','icon.png')
-            # Use at most the first 2 directory components (excluding filename)
-            dir_parts = src_parts[:-1]  # directories only
-            prefix = "/".join(dir_parts[:2]) if dir_parts else ""
+            # Disambiguate by injecting a short source-path prefix.
+            # First, strip the cluster folder name from the source path to
+            # avoid stuttering like "backups/pi_migration/backups/pi_migration/…".
+            # Then take up to 2 directory components from what remains.
+            src_parts = list(Path(src).parts[:-1])  # directories only
+            folder_parts = list(Path(folder).parts)
+            # Strip leading components that match the folder name
+            remaining = src_parts
+            if src_parts[:len(folder_parts)] == folder_parts:
+                remaining = src_parts[len(folder_parts):]
+            # Use up to 2 components from the remaining path
+            prefix = "/".join(remaining[:2]) if remaining else ""
             if prefix:
                 dst = f"{folder}/{prefix}/{Path(src).name}"
+            elif remaining or src_parts:
+                # Fallback: use full remaining dirs if stripping left nothing useful
+                fallback = "/".join(src_parts[:2]) if src_parts else ""
+                if fallback:
+                    dst = f"{folder}/{fallback}/{Path(src).name}"
+                else:
+                    dst = f"{folder}/{Path(src).stem}-dup{Path(src).suffix}"
             else:
                 # Top-level file — use the stem as a prefix
                 dst = f"{folder}/{Path(src).stem}-dup{Path(src).suffix}"
@@ -1359,8 +1383,12 @@ JSON: [{{"file": "original/path.ext", "folder": "target/folder"}}, ...]"""
 
         for src, dst, folder in batch_moves:
             if dst in colliding:
-                dir_parts = Path(src).parts[:-1]
-                prefix = "/".join(dir_parts[:2]) if dir_parts else ""
+                src_dirs = list(Path(src).parts[:-1])
+                folder_parts = list(Path(folder).parts)
+                remaining = src_dirs
+                if src_dirs[:len(folder_parts)] == folder_parts:
+                    remaining = src_dirs[len(folder_parts):]
+                prefix = "/".join(remaining[:2]) if remaining else "/".join(src_dirs[:2])
                 if prefix:
                     dst = f"{folder}/{prefix}/{Path(src).name}"
 

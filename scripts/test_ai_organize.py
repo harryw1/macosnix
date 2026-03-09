@@ -746,6 +746,30 @@ class TestCollisionEdgeCases:
                 f"Disambiguation should cap at 2 dir levels, got {len(parts)}: {d}"
             )
 
+    def test_collision_no_stutter_when_folder_matches_source_prefix(self):
+        """When cluster name matches source path prefix, don't repeat it.
+
+        e.g. folder="backups/pi_migration" + source="backups/pi_migration/var/www/icon.png"
+        should become "backups/pi_migration/var/www/icon.png", NOT
+        "backups/pi_migration/backups/pi_migration/icon.png".
+        """
+        files = [
+            {"path": "backups/pi_migration/var/www/publicpresence/icon.png"},
+            {"path": "backups/pi_migration/var/www/blog/icon.png"},
+        ]
+        labels = np.array([0, 0])
+        cluster_names = {0: "backups/pi_migration"}
+        ops = mod.assign_files_to_clusters(files, labels, cluster_names)
+        moves = [o for o in ops if o.get("op") == "move"]
+        dsts = [m["to"] for m in moves]
+        for d in dsts:
+            # Must NOT contain repeated "backups/pi_migration/backups/pi_migration"
+            assert d.count("backups/pi_migration") == 1, (
+                f"Stuttering cluster prefix in disambiguation: {d}"
+            )
+            # Should contain the distinguishing part (var/www)
+            assert "var/www" in d or "var" in d, f"Missing distinguishing prefix: {d}"
+
     def test_multiple_clusters_independent_collisions(self):
         """Collisions in different clusters should be handled independently."""
         files = [
@@ -1012,6 +1036,39 @@ class TestRefineDominantClusters:
         """Empty auto_names should be handled gracefully."""
         result = mod._refine_dominant_clusters([], np.array([]), {}, total_files=0)
         assert result == {}
+
+    def test_recursive_refinement_goes_deeper(self):
+        """When depth-2 still concentrates, should continue to depth-3+.
+
+        Simulates: backups/pi_migration/projA/… and backups/pi_migration/projB/…
+        where depth-2 gives "backups/pi_migration" for both clusters (still >40%),
+        so depth-3 should produce "backups/pi_migration/projA" etc.
+
+        We use enough "other" files (5) so that the final depth-3 names
+        (3/10 = 30% each) fall below the 40% threshold and don't trigger
+        a further (impossible) depth-4 refinement.
+        """
+        files = [
+            {"path": "backups/pi_migration/projA/a.txt"},
+            {"path": "backups/pi_migration/projA/b.txt"},
+            {"path": "backups/pi_migration/projA/c.txt"},
+            {"path": "backups/pi_migration/projB/d.txt"},
+            {"path": "backups/pi_migration/projB/e.txt"},
+            {"path": "backups/pi_migration/projB/f.txt"},
+            {"path": "other/g.txt"},
+            {"path": "other/h.txt"},
+            {"path": "other/i.txt"},
+            {"path": "other/j.txt"},
+        ]
+        labels = np.array([0, 0, 0, 1, 1, 1, 2, 2, 2, 2])
+        auto_names = {0: "backups", 1: "backups", 2: "other"}
+        refined = mod._refine_dominant_clusters(files, labels, auto_names, total_files=10)
+        # After depth-2: both map to "backups/pi_migration" (60%, still > 40%)
+        # After depth-3: cluster 0 → "backups/pi_migration/projA" (30%),
+        #                cluster 1 → "backups/pi_migration/projB" (30%)
+        assert refined[0] == "backups/pi_migration/projA"
+        assert refined[1] == "backups/pi_migration/projB"
+        assert refined[2] == "other"
 
 
 # ===========================================================================
