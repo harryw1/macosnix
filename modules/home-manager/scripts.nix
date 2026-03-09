@@ -581,8 +581,8 @@ README
     echo "Pulling lfm2.5-thinking:1.2b (Reasoning)..."
     ollama pull lfm2.5-thinking:1.2b
 
-    echo "Pulling qwen3-embedding:8b (Embedding)..."
-    ollama pull qwen3-embedding:8b
+    echo "Pulling qwen3-embedding:0.6b (Embedding)..."
+    ollama pull qwen3-embedding:0.6b
   '';
 in
 {

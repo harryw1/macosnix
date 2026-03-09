@@ -10,7 +10,7 @@
 #   ai-chat              # interactive prompt via gum
 set -euo pipefail
 
-EMBED_MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:8b}"
+EMBED_MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:0.6b}"
 CHAT_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
 
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"

@@ -28,7 +28,7 @@ APP_DIR = Path(XDG_DATA_HOME) / "ai-search"
 DB_PATH = APP_DIR / "vectors.db"
 
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
-MODEL = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:8b")
+MODEL = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:0.6b")
 
 # Maximum characters per chunk to avoid hitting token limits
 CHUNK_SIZE = 4000
@@ -153,11 +153,11 @@ def init_db() -> sqlite3.Connection:
     # Enable Write-Ahead Logging for better concurrent performance
     conn.execute("PRAGMA journal_mode=WAL;")
 
-    # We use a virtual table provided by sqlite-vec. 
-    # qwen3-embedding:8b produces 4096-dimensional vectors.
+    # We use a virtual table provided by sqlite-vec.
+    # qwen3-embedding:0.6b produces 1024-dimensional vectors.
     conn.execute("""
         CREATE VIRTUAL TABLE IF NOT EXISTS file_embeddings USING vec0(
-            embedding float[4096]
+            embedding float[1024]
         )
     """)
     conn.execute("""

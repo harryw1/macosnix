@@ -33,7 +33,7 @@ DB_PATH = APP_DIR / "vectors.db"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 
-EMBED_MODEL = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:8b")
+EMBED_MODEL = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:0.6b")
 CHAT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3.5:9b")
 
 TOP_K = 5

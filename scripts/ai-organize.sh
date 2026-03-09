@@ -13,7 +13,7 @@
 set -euo pipefail
 
 MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
-EMBED_MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:8b}"
+EMBED_MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:0.6b}"
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 PY_SCRIPT="${AI_ORGANIZE_PY_PATH:-$DIR/ai-organize.py}"

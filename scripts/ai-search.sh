@@ -8,7 +8,7 @@
 #   ai-search --clear
 set -euo pipefail
 
-MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:8b}"
+MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:0.6b}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP_DIR="$XDG_DATA_HOME/ai-search"
 
