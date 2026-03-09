@@ -156,7 +156,8 @@ describe_result() {
     "Briefly describe what happened in 1–3 plain-English sentences." \
     "If the output is empty, explain what that likely means for this specific command." \
     "If there was an error, explain what went wrong." \
-    "No markdown. No code fences. No preamble." \
+    "You may use light markdown (bold, lists) when it aids readability." \
+    "No code fences. No preamble." \
     "" \
     "--- command ---" \
     "$cmd" \
@@ -176,11 +177,14 @@ describe_result() {
 
   if [ -n "$desc" ]; then
     echo ""
+    # Render markdown, then wrap in a styled border
+    local formatted
+    formatted=$(printf '%s' "$desc" | gum format)
     gum style \
       --width "$TERM_WIDTH" \
       --border rounded --padding "1 2" \
       --border-foreground 105 \
-      "$(printf '󰋽  %s' "$desc")"
+      "$(printf '󰋽  %s' "$formatted")"
   fi
 }
 

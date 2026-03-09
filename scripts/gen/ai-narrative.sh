@@ -129,10 +129,12 @@ fi
 echo ""
 TERM_WIDTH=$(term_width)
 
+FORMATTED_NARRATIVE=$(printf '%s' "$NARRATIVE" | gum format)
+
 gum style \
   --width "$TERM_WIDTH" \
   --border rounded --padding "1 2" \
-  "$NARRATIVE"
+  "$FORMATTED_NARRATIVE"
 echo ""
 
 # ── Action menu ────────────────────────────────────────────────────────────────

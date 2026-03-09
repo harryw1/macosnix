@@ -118,10 +118,12 @@ print('true' if d.get('verified', True) else 'false')
 echo ""
 TERM_WIDTH=$(term_width)
 
+FORMATTED_EXPLANATION=$(printf '%s' "$EXPLANATION" | gum format)
+
 gum style \
   --width "$TERM_WIDTH" \
   --border rounded --padding "1 2" \
-  "$EXPLANATION"
+  "$FORMATTED_EXPLANATION"
 
 if [ "$POST_VERIFIED" = "false" ]; then
   gum style --foreground 214 \

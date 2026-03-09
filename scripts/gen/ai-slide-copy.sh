@@ -155,10 +155,12 @@ fi
 echo ""
 TERM_WIDTH=$(term_width)
 
+FORMATTED_SLIDES=$(printf '%s' "$SLIDES" | gum format)
+
 gum style \
   --width "$TERM_WIDTH" \
   --border rounded --padding "1 2" \
-  "$SLIDES"
+  "$FORMATTED_SLIDES"
 echo ""
 
 # ── Action menu ────────────────────────────────────────────────────────────────
