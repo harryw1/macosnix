@@ -123,6 +123,67 @@ if [ "$POST_VERIFIED" = "false" ]; then
 fi
 echo ""
 
+# ── Describe command results via LLM ─────────────────────────────────────────
+describe_result() {
+  # Usage: describe_result "command" "output" exit_code
+  local cmd="$1" output="$2" exit_code="$3"
+
+  local desc_prompt
+  desc_prompt=$(mktemp)
+  trap "rm -f '$desc_prompt'; $(trap -p EXIT | sed "s/^trap -- '//;s/' EXIT$//")" EXIT
+
+  local output_section
+  if [ -z "$output" ] && [ "$exit_code" -eq 0 ]; then
+    output_section="The command produced no output and exited successfully (exit code 0)."
+  elif [ -z "$output" ]; then
+    output_section="The command produced no output and exited with code $exit_code."
+  else
+    # Truncate very long output to keep prompt manageable
+    local trimmed
+    trimmed=$(printf '%s' "$output" | head -80)
+    local total_lines
+    total_lines=$(printf '%s' "$output" | wc -l | tr -d ' ')
+    if [ "$total_lines" -gt 80 ]; then
+      output_section="$(printf '%s\n(… %s total lines, showing first 80)' "$trimmed" "$total_lines")"
+    else
+      output_section="$trimmed"
+    fi
+    output_section="$(printf 'Exit code: %s\n\n%s' "$exit_code" "$output_section")"
+  fi
+
+  printf '%s\n' \
+    "You are a concise shell assistant. A user ran a command and got the result below." \
+    "Briefly describe what happened in 1–3 plain-English sentences." \
+    "If the output is empty, explain what that likely means for this specific command." \
+    "If there was an error, explain what went wrong." \
+    "No markdown. No code fences. No preamble." \
+    "" \
+    "--- command ---" \
+    "$cmd" \
+    "" \
+    "--- result ---" \
+    "$output_section" \
+    >"$desc_prompt"
+
+  local desc_raw
+  desc_raw=$(ollama_generate "$desc_prompt" "$MODEL" \
+    --temperature 0.4 --num_predict 300 --num_ctx 2048 \
+    --spinner "󰚩  Summarising results…")
+
+  local desc
+  desc=$(printf '%s' "$desc_raw" | strip_think_blocks)
+  [ -z "$desc" ] && desc="$desc_raw"
+
+  if [ -n "$desc" ]; then
+    echo ""
+    gum style \
+      --width "$TERM_WIDTH" \
+      --border rounded --padding "1 2" \
+      --border-foreground 105 \
+      "$(printf '󰋽  %s' "$desc")"
+  fi
+}
+
 # ── Action menu ────────────────────────────────────────────────────────────────
 ACTION=$(gum choose \
   --header "What would you like to do?" \
@@ -137,7 +198,10 @@ case "$ACTION" in
   if gum confirm "$(printf 'Run: %s' "$CMD")" \
     --affirmative "Run it" --negative "Cancel"; then
     echo ""
-    eval "$CMD"
+    run_output=$(eval "$CMD" 2>&1) && run_exit=$? || run_exit=$?
+    # Show the raw output first (if any), so the user sees the real data
+    [ -n "$run_output" ] && printf '%s\n' "$run_output"
+    describe_result "$CMD" "$run_output" "$run_exit"
   else
     echo "Cancelled."
   fi
@@ -162,7 +226,9 @@ case "$ACTION" in
     if gum confirm "$(printf 'Run: %s' "$EDITED")" \
       --affirmative "Run it" --negative "Cancel"; then
       echo ""
-      eval "$EDITED"
+      edit_output=$(eval "$EDITED" 2>&1) && edit_exit=$? || edit_exit=$?
+      [ -n "$edit_output" ] && printf '%s\n' "$edit_output"
+      describe_result "$EDITED" "$edit_output" "$edit_exit"
     else
       echo "Cancelled."
     fi
