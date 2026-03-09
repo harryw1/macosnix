@@ -1070,6 +1070,33 @@ class TestRefineDominantClusters:
         assert refined[1] == "backups/pi_migration/projB"
         assert refined[2] == "other"
 
+    def test_convergence_stops_when_all_map_to_same_prefix(self):
+        """When all clusters share the same deep path, stop at the first divergent level.
+
+        Simulates the Hugo website case: backups/pi_migration/var/www/site/…
+        where every cluster maps to the same prefix at every depth.
+        The recursion should stop at depth-2 ("backups/pi_migration") since
+        going deeper just gives the same name for all clusters.
+        """
+        files = [
+            {"path": "backups/pi_migration/var/www/site/themes/a.svg"},
+            {"path": "backups/pi_migration/var/www/site/themes/b.svg"},
+            {"path": "backups/pi_migration/var/www/site/themes/c.svg"},
+            {"path": "backups/pi_migration/var/www/site/content/d.md"},
+            {"path": "backups/pi_migration/var/www/site/content/e.md"},
+            {"path": "backups/pi_migration/var/www/site/content/f.md"},
+            {"path": "other/g.txt"},
+        ]
+        labels = np.array([0, 0, 0, 1, 1, 1, 2])
+        auto_names = {0: "backups", 1: "backups", 2: "other"}
+        refined = mod._refine_dominant_clusters(files, labels, auto_names, total_files=7)
+        # At depth-2, both clusters → "backups/pi_migration" (same prefix)
+        # Convergence check: names_before == names_after → stop
+        # Both clusters should keep "backups/pi_migration", NOT drill to depth-6
+        assert refined[0] == "backups/pi_migration"
+        assert refined[1] == "backups/pi_migration"
+        assert refined[2] == "other"
+
 
 # ===========================================================================
 #  Single-dict wrapping in _call_llm_for_list

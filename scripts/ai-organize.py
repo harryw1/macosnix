@@ -516,6 +516,8 @@ def _load_cached_embeddings(directory: str) -> dict[str, list[float]] | None:
     averaged into a single representative vector.
     """
     if not SEARCH_DB_PATH.exists():
+        print(f"  ℹ No ai-search DB found — will embed from scratch.",
+              file=sys.stderr)
         return None
 
     abs_dir = str(Path(directory).resolve())
@@ -538,10 +540,12 @@ def _load_cached_embeddings(directory: str) -> dict[str, list[float]] | None:
         rows = cur.fetchall()
         conn.close()
     except Exception as e:
-        print(f"  Note: Could not read ai-search DB for cache ({e}).", file=sys.stderr)
+        print(f"  ⚠ Could not read ai-search DB for cache: {e}", file=sys.stderr)
         return None
 
     if not rows:
+        print(f"  ℹ ai-search DB exists but has no embeddings for this directory.",
+              file=sys.stderr)
         return None
 
     # Average multiple chunks per file into one vector
@@ -575,6 +579,101 @@ def _load_cached_embeddings(directory: str) -> dict[str, list[float]] | None:
     return file_vecs
 
 
+def _save_embeddings_to_db(embeddings: list[tuple[str, list[float]]]) -> None:
+    """Write freshly computed embeddings back to the ai-search DB.
+
+    Each entry is (absolute_filepath, embedding_vector).  We store one row
+    per file in both ``file_metadata`` and ``file_embeddings``, using the
+    file path as the snippet (ai-organize doesn't chunk — it embeds the
+    whole metadata string).  Existing rows for the same filepath are
+    replaced so repeated runs stay idempotent.
+    """
+    if not embeddings:
+        return
+
+    try:
+        import sqlite_vec  # type: ignore[import-untyped]
+
+        SEARCH_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(SEARCH_DB_PATH)
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        conn.execute("PRAGMA journal_mode=WAL;")
+
+        # Ensure tables exist (mirrors ai-search schema)
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS file_embeddings USING vec0(
+                embedding float[1024]
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS file_metadata (
+                rowid INTEGER PRIMARY KEY,
+                filepath TEXT NOT NULL,
+                mtime REAL NOT NULL,
+                snippet TEXT NOT NULL
+            )
+        """)
+
+        cur = conn.cursor()
+        written = 0
+
+        for filepath, vec in embeddings:
+            # Skip zero-vectors (embedding failures)
+            if all(v == 0.0 for v in vec[:8]):
+                continue
+
+            # Get current mtime (best-effort)
+            try:
+                mtime = Path(filepath).stat().st_mtime
+            except OSError:
+                mtime = 0.0
+
+            # Delete any existing rows for this filepath
+            cur.execute(
+                "SELECT rowid FROM file_metadata WHERE filepath = ?",
+                (filepath,),
+            )
+            old_rowids = [r[0] for r in cur.fetchall()]
+            if old_rowids:
+                placeholders = ",".join("?" * len(old_rowids))
+                cur.execute(
+                    f"DELETE FROM file_embeddings WHERE rowid IN ({placeholders})",
+                    old_rowids,
+                )
+                cur.execute(
+                    f"DELETE FROM file_metadata WHERE rowid IN ({placeholders})",
+                    old_rowids,
+                )
+
+            # Insert metadata
+            snippet = Path(filepath).name
+            cur.execute(
+                "INSERT INTO file_metadata (filepath, mtime, snippet) VALUES (?, ?, ?)",
+                (filepath, mtime, snippet),
+            )
+            new_id = cur.lastrowid
+
+            # Insert embedding at matching rowid
+            vec_bytes = struct.pack(f"<{len(vec)}f", *vec)
+            cur.execute(
+                "INSERT INTO file_embeddings (rowid, embedding) VALUES (?, ?)",
+                (new_id, vec_bytes),
+            )
+            written += 1
+
+            if written % 100 == 0:
+                conn.commit()
+
+        conn.commit()
+        conn.close()
+        print(f"  ✓ Saved {written} new embeddings to ai-search DB.", file=sys.stderr)
+
+    except Exception as e:
+        print(f"  ⚠ Could not write embeddings to ai-search DB: {e}", file=sys.stderr)
+
+
 def embed_files(files: list[dict], directory: str | None = None) -> np.ndarray:
     """Embed every file's metadata via the Ollama embeddings endpoint.
 
@@ -591,14 +690,26 @@ def embed_files(files: list[dict], directory: str | None = None) -> np.ndarray:
         cache = _load_cached_embeddings(directory)
         if cache:
             hits = sum(1 for f in files if f["path"] in cache)
-            print(
-                f"  Found {hits}/{len(files)} cached embeddings in ai-search DB.",
-                file=sys.stderr,
-            )
+            if hits > 0:
+                print(
+                    f"  ✓ Found {hits}/{len(files)} cached embeddings in ai-search DB.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"  ℹ ai-search DB has embeddings but none match current file list "
+                    f"(0/{len(files)} hits).",
+                    file=sys.stderr,
+                )
+                cache = None  # no point checking per-file
+    else:
+        print("  ℹ No directory provided — skipping DB cache lookup.", file=sys.stderr)
 
     vectors: list[list[float]] = []
+    fresh_embeddings: list[tuple[str, list[float]]] = []  # (abs_path, vec) for DB write-back
     total = len(files)
     api_calls = 0
+    abs_dir = str(Path(directory).resolve()).rstrip("/") + "/" if directory else None
 
     for i, f in enumerate(files):
         if i % EMBED_BATCH_LOG == 0 and i > 0:
@@ -628,6 +739,9 @@ def embed_files(files: list[dict], directory: str | None = None) -> np.ndarray:
                 vectors.append([0.0] * dim)
             else:
                 vectors.append(embedding)
+                # Track for DB write-back
+                if abs_dir:
+                    fresh_embeddings.append((abs_dir + f["path"], embedding))
         except requests.exceptions.RequestException as e:
             print(f"  Error embedding {f['path']}: {e}", file=sys.stderr)
             dim = len(vectors[-1]) if vectors else 384
@@ -635,6 +749,11 @@ def embed_files(files: list[dict], directory: str | None = None) -> np.ndarray:
 
     print(f"  Embedded {total}/{total} files ({api_calls} API calls, "
           f"{total - api_calls} cached).", file=sys.stderr)
+
+    # ── Write freshly computed embeddings back to ai-search DB ────────────
+    if fresh_embeddings:
+        _save_embeddings_to_db(fresh_embeddings)
+
     return np.array(vectors, dtype=np.float32)
 
 
@@ -991,11 +1110,10 @@ def _refine_dominant_clusters(
     progressively deeper path prefixes (depth 2, 3, 4, …) until the
     dominant folder's share drops below the threshold.
 
-    Example progression for ``backups/pi_migration/var/www/publicpresence``:
-      depth 1: "backups"                              → still 92%
-      depth 2: "backups/pi_migration"                 → still 80%
-      depth 3: "backups/pi_migration/var"             → still 60%
-      depth 4: "backups/pi_migration/var/www"         → drops below 40% ✓
+    **Convergence guard**: if a refinement pass doesn't increase the number
+    of *distinct* names for the dominant clusters, the files all share the
+    same deep path (e.g. a single project at ``backups/pi_migration/var/www/…``).
+    Drilling deeper won't help, so we stop and accept the current name.
 
     If a cluster can't be refined (files are too shallow), the label is
     removed so the LLM can name it instead.
@@ -1022,6 +1140,9 @@ def _refine_dominant_clusters(
         if not dominant_names:
             break  # No concentration problem — done
 
+        any_progress = False  # Track whether this depth pass actually helped
+        converged = False     # Set when convergence detected → stop all drilling
+
         for dom_name in dominant_names:
             dom_count = name_file_counts[dom_name]
             print(
@@ -1032,6 +1153,9 @@ def _refine_dominant_clusters(
 
             # Find clusters currently mapped to this dominant name
             dom_labels = [lbl for lbl, n in refined.items() if n == dom_name]
+
+            # Count distinct names BEFORE this pass for convergence check
+            names_before = {refined[lbl] for lbl in dom_labels if lbl in refined}
 
             for lbl in dom_labels:
                 indices = np.where(labels == lbl)[0]
@@ -1052,6 +1176,7 @@ def _refine_dominant_clusters(
                 if best_dir == "_shallow_" or pct < 0.5:
                     # Can't go deeper — remove so LLM names it
                     del refined[lbl]
+                    any_progress = True
                     print(
                         f"    Cluster {lbl}: depth-{depth} inconclusive, deferring to LLM.",
                         file=sys.stderr,
@@ -1061,10 +1186,59 @@ def _refine_dominant_clusters(
                     pass
                 else:
                     refined[lbl] = best_dir
+                    any_progress = True
                     print(
                         f"    Cluster {lbl}: refined → '{best_dir}' ({pct:.0%})",
                         file=sys.stderr,
                     )
+
+            # Convergence check: did refinement actually *spread* clusters
+            # across more distinct names?  If N clusters that previously
+            # shared one dominant name STILL all share a single (deeper)
+            # name, peek one level further to check if they diverge there.
+            # If the peek also shows a single shared name, the files are
+            # from one project and drilling further is pointless.
+            names_after = {refined[lbl] for lbl in dom_labels if lbl in refined}
+            if (
+                len(dom_labels) > 1
+                and len(names_after) == 1
+                and names_after != names_before
+            ):
+                # Peek at depth+1: would the clusters diverge?
+                peek_depth = depth + 1
+                peek_names: set[str] = set()
+                for lbl in dom_labels:
+                    if lbl not in refined:
+                        continue
+                    idxs = np.where(labels == lbl)[0]
+                    for idx in idxs:
+                        parts = files[idx]["path"].split("/")
+                        if len(parts) > peek_depth:
+                            peek_names.add("/".join(parts[:peek_depth]))
+                            break  # one sample per cluster is enough
+
+                if len(peek_names) <= 1:
+                    # Peek confirms no divergence — accept current name
+                    sole_name = next(iter(names_after))
+                    print(
+                        f"  Convergence: all {len(dom_labels)} cluster(s) map to "
+                        f"'{sole_name}' with no divergence ahead — accepting.",
+                        file=sys.stderr,
+                    )
+                    converged = True
+                    break  # Exit the dominant_names loop
+                # else: peek shows divergence at next depth — keep drilling
+
+        if converged:
+            break  # Exit the depth loop
+
+        if not any_progress:
+            # No refinement happened at this depth — stop iterating
+            print(
+                f"  No further refinement possible at depth {depth}, stopping.",
+                file=sys.stderr,
+            )
+            break
 
     return refined
 
