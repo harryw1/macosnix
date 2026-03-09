@@ -65,6 +65,10 @@ EMBED_BATCH_LOG = 100
 # Minimum files in a cluster for HDBSCAN to consider it a real group.
 # Smaller values produce more granular folders; larger values merge more.
 HDBSCAN_MIN_CLUSTER = 3
+# Weight given to embedding (content) distance vs path (structure) distance
+# when computing the composite distance matrix for clustering.
+# Higher α → more weight on content similarity; lower α → more on directory structure.
+COMPOSITE_ALPHA = 0.65
 
 TEXT_EXTS = {
     ".nix", ".md", ".toml", ".yml", ".yaml", ".sh", ".bash", ".zsh",
@@ -544,29 +548,178 @@ def embed_files(files: list[dict]) -> np.ndarray:
     return np.array(vectors, dtype=np.float32)
 
 
-def cluster_files(embeddings: np.ndarray, min_cluster: int = HDBSCAN_MIN_CLUSTER) -> np.ndarray:
-    """Cluster file embeddings using HDBSCAN.
+# ── Composite Distance (embedding + path structure) ───────────────────────────
+#
+# The small embedding model (0.6b) can't always separate files that are
+# semantically similar but belong to different projects (e.g. icons from
+# two unrelated repos).  We compensate by blending the embedding's cosine
+# distance with an IDF-weighted Jaccard distance on path components.
+#
+# IDF weighting means common structural dirs (assets/, public/) contribute
+# little while distinctive project names (raycast-ai-applescript/, etc.)
+# dominate — exactly the signal the embedding model misses.
 
-    Returns an integer label array of length N.  Label -1 means the file
-    is noise (doesn't belong to any cluster).  HDBSCAN automatically
-    determines the number of clusters from the data density.
+
+def _compute_path_idf(files: list[dict]) -> dict[str, float]:
+    """Compute Inverse Document Frequency for each directory component.
+
+    Components that appear in many files' paths get low IDF; unique project
+    directory names get high IDF.  Only considers directory components, not
+    the filename itself.
     """
-    from sklearn.cluster import HDBSCAN
+    import math
+
+    n = len(files)
+    if n == 0:
+        return {}
+
+    doc_freq: dict[str, int] = {}
+    for f in files:
+        # Use only directory components — the filename is content, not structure
+        components = set(Path(f["path"]).parts[:-1])
+        for comp in components:
+            doc_freq[comp] = doc_freq.get(comp, 0) + 1
+
+    return {
+        comp: math.log(n / df)
+        for comp, df in doc_freq.items()
+    }
+
+
+def _path_distance_matrix(files: list[dict]) -> np.ndarray:
+    """Compute NxN IDF-weighted Jaccard distance on path directory components.
+
+    Higher-IDF components (distinctive project names) contribute more to
+    distance than low-IDF components (common structural dirs like assets/).
+    """
+    idf = _compute_path_idf(files)
+    n = len(files)
+
+    # Pre-compute directory component sets per file
+    file_components: list[set[str]] = []
+    for f in files:
+        components = set(Path(f["path"]).parts[:-1])
+        file_components.append(components)
+
+    dist = np.zeros((n, n), dtype=np.float32)
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = file_components[i], file_components[j]
+            union_set = a | b
+            if not union_set:
+                continue  # both are top-level files — zero path distance
+            # Identical component sets → distance 0 regardless of IDF weights
+            if a == b:
+                continue
+            intersection_set = a & b
+            w_intersection = sum(idf.get(c, 0.0) for c in intersection_set)
+            w_union = sum(idf.get(c, 0.0) for c in union_set)
+            # When all weights are zero (every component appears in every file),
+            # fall back to plain Jaccard
+            if w_union == 0.0:
+                similarity = len(intersection_set) / len(union_set)
+            else:
+                similarity = w_intersection / w_union
+            d = 1.0 - similarity
+            dist[i, j] = d
+            dist[j, i] = d
+
+    return dist
+
+
+def _composite_distance_matrix(
+    files: list[dict],
+    embeddings: np.ndarray,
+    alpha: float = COMPOSITE_ALPHA,
+) -> np.ndarray:
+    """Blend embedding cosine distance with IDF-weighted path distance.
+
+    Returns an NxN float32 matrix suitable for ``HDBSCAN(metric='precomputed')``.
+    Both component distances are min-max normalised to [0, 1] before blending
+    so that α directly controls the relative contribution.
+    """
+    from sklearn.metrics.pairwise import euclidean_distances
     from sklearn.preprocessing import normalize
 
-    # L2-normalise so HDBSCAN's euclidean distance ≈ cosine distance
     normed = normalize(embeddings, norm="l2")
 
-    clusterer = HDBSCAN(
-        min_cluster_size=min_cluster,
-        metric="euclidean",
-        # Let the library choose defaults for everything else
-    )
-    labels = clusterer.fit_predict(normed)
+    # Cosine distance from L2-normed vectors: d_cos = ||a−b||² / 2
+    eucl = euclidean_distances(normed)
+    cosine_dist = np.clip(eucl ** 2 / 2.0, 0.0, 1.0)
+
+    path_dist = _path_distance_matrix(files)
+
+    # Min-max normalise each component to [0, 1]
+    cos_max = cosine_dist.max() or 1.0
+    path_max = path_dist.max() or 1.0
+
+    composite = alpha * (cosine_dist / cos_max) + (1.0 - alpha) * (path_dist / path_max)
+    np.fill_diagonal(composite, 0.0)
+
+    return composite
+
+
+def cluster_files(
+    files: list[dict],
+    embeddings: np.ndarray,
+    min_cluster: int = HDBSCAN_MIN_CLUSTER,
+) -> np.ndarray:
+    """Cluster file embeddings using HDBSCAN with composite distance.
+
+    Blends embedding cosine distance with IDF-weighted path-component
+    distance so that files from the same project cluster together even
+    when their content is semantically similar to files in other projects.
+
+    Falls back to pure cosine distance for very large directories (>5 000
+    files) where computing the full N×N matrix would be too expensive.
+
+    Returns an integer label array of length N.  Label -1 means noise.
+    """
+    from sklearn.cluster import HDBSCAN
+
+    use_composite = len(files) <= 5000
+
+    if use_composite:
+        print("  Computing composite distance (embedding + path IDF)…", file=sys.stderr)
+        dist_matrix = _composite_distance_matrix(files, embeddings)
+        clusterer = HDBSCAN(
+            min_cluster_size=min_cluster,
+            metric="precomputed",
+        )
+        labels = clusterer.fit_predict(dist_matrix)
+    else:
+        from sklearn.preprocessing import normalize
+        normed = normalize(embeddings, norm="l2")
+        clusterer = HDBSCAN(
+            min_cluster_size=min_cluster,
+            metric="euclidean",
+        )
+        labels = clusterer.fit_predict(normed)
+
     n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
     n_noise    = int(np.sum(labels == -1))
     print(f"  HDBSCAN found {n_clusters} cluster(s), {n_noise} noise file(s).",
           file=sys.stderr)
+
+    # ── Silhouette score: quantitative clustering quality ─────────────────────
+    if n_clusters >= 2:
+        from sklearn.metrics import silhouette_score
+        non_noise = labels != -1
+        if np.sum(non_noise) > n_clusters:
+            try:
+                if use_composite:
+                    score = silhouette_score(
+                        dist_matrix[non_noise][:, non_noise],
+                        labels[non_noise],
+                        metric="precomputed",
+                    )
+                else:
+                    score = silhouette_score(normed[non_noise], labels[non_noise])
+                quality = "good" if score > 0.25 else ("fair" if score > 0.10 else "poor")
+                print(f"  Silhouette score: {score:.3f} ({quality}).", file=sys.stderr)
+            except ValueError:
+                pass
+
     return labels
 
 
@@ -575,15 +728,23 @@ def name_clusters(
     labels: np.ndarray,
     root: str,
     flatten: bool = False,
+    skip_labels: set[int] | None = None,
 ) -> dict[int, str]:
     """One LLM call: name each cluster based on representative file paths.
 
     For each cluster, we pick up to 15 representative files and ask the LLM
     to assign a descriptive folder name.  Returns a mapping from cluster
     label → folder name string.
+
+    Clusters whose labels appear in *skip_labels* are excluded (they were
+    already auto-named from directory structure).
     """
     unique_labels = sorted(set(labels))
     cluster_labels = [l for l in unique_labels if l != -1]
+    if skip_labels:
+        cluster_labels = [l for l in cluster_labels if l not in skip_labels]
+    if not cluster_labels:
+        return {}
 
     # Build representative samples per cluster
     cluster_descriptions: list[str] = []
@@ -669,6 +830,47 @@ JSON:"""
     return {}
 
 
+def _auto_name_from_paths(
+    files: list[dict],
+    labels: np.ndarray,
+) -> dict[int, str]:
+    """Name clusters from their dominant directory prefix — no LLM needed.
+
+    If ≥60% of a cluster's files share the same top-level directory, that
+    directory is used as the folder name.  This avoids sending obvious cases
+    to the LLM (where a small model might invent something worse like
+    "social-icons" when the answer is clearly "raycast-ai-applescript").
+    """
+    from collections import Counter
+
+    unique_labels = sorted(set(labels))
+    cluster_labels = [lbl for lbl in unique_labels if lbl != -1]
+    auto_names: dict[int, str] = {}
+
+    for label in cluster_labels:
+        indices = np.where(labels == label)[0]
+        top_dirs: Counter[str] = Counter()
+        for idx in indices:
+            parts = files[idx]["path"].split("/")
+            if len(parts) > 1:
+                top_dirs[parts[0]] += 1
+            else:
+                top_dirs["_root_"] += 1
+
+        if not top_dirs:
+            continue
+
+        dominant_dir, count = top_dirs.most_common(1)[0]
+        if dominant_dir == "_root_":
+            continue
+
+        pct = count / len(indices)
+        if pct >= 0.6:
+            auto_names[label] = dominant_dir
+
+    return auto_names
+
+
 def assign_files_to_clusters(
     files: list[dict],
     labels: np.ndarray,
@@ -678,24 +880,58 @@ def assign_files_to_clusters(
 
     Files labelled as noise (-1) or whose cluster wasn't named are left
     in place (no move operation generated).
+
+    When multiple files would collide at the same destination path, the
+    original parent directory is prepended as a subdirectory to disambiguate.
+    For example, if both ``projA/icon.png`` and ``projB/icon.png`` target
+    ``assets/``, the second becomes ``assets/projB/icon.png``.
     """
-    ops: list[dict] = []
-    seen_mkdirs: set[str] = set()
+    # First pass: compute raw destinations and detect collisions
+    raw_moves: list[tuple[int, str, str, str]] = []  # (idx, src, dst, folder)
+    dst_counts: dict[str, int] = {}
 
     for i, f in enumerate(files):
         label = int(labels[i])
         folder = cluster_names.get(label)
         if folder is None:
-            continue  # noise or unnamed cluster — leave in place
-
+            continue
         src = f["path"]
         dst = f"{folder}/{Path(src).name}"
         if src == dst:
             continue
+        dst_counts[dst] = dst_counts.get(dst, 0) + 1
+        raw_moves.append((i, src, dst, folder))
+
+    colliding_dsts = {d for d, c in dst_counts.items() if c > 1}
+
+    # Second pass: disambiguate collisions by injecting the original parent dir
+    ops: list[dict] = []
+    seen_mkdirs: set[str] = set()
+
+    # Track which disambiguated dsts are still colliding so we can escalate
+    for _idx, src, dst, folder in raw_moves:
+        if dst in colliding_dsts:
+            # Use the full source directory path to disambiguate.
+            # "project-a/assets/icon.png" → "folder/project-a/assets/icon.png"
+            # This handles cases where the immediate parent is the same
+            # across colliding files (e.g. both have "assets/icon.png").
+            src_dir = str(Path(src).parent)
+            if src_dir and src_dir != ".":
+                dst = f"{folder}/{src_dir}/{Path(src).name}"
+            else:
+                # Top-level file — use the stem as a prefix
+                dst = f"{folder}/{Path(src).stem}-dup{Path(src).suffix}"
 
         if folder not in seen_mkdirs:
             ops.append({"op": "mkdir", "path": folder})
             seen_mkdirs.add(folder)
+
+        # Also ensure any disambiguated subdirectory gets a mkdir
+        dst_parent = str(Path(dst).parent)
+        if dst_parent != folder and dst_parent not in seen_mkdirs:
+            ops.append({"op": "mkdir", "path": dst_parent})
+            seen_mkdirs.add(dst_parent)
+
         ops.append({
             "op": "move", "from": src, "to": dst,
             "reason": f"Organized into {folder}",
@@ -905,7 +1141,9 @@ JSON: [{{"file": "original/path.ext", "folder": "target/folder"}}, ...]"""
 
         assignments = _call_llm_for_list(prompt, label=f"classify batch {n}")
 
-        seen_mkdirs: set[str] = set()
+        # Collect raw moves from this batch, then resolve collisions
+        batch_moves: list[tuple[str, str, str]] = []  # (src, dst, folder)
+        dst_counts: dict[str, int] = {}
         for a in assignments:
             if not isinstance(a, dict):
                 continue
@@ -916,9 +1154,27 @@ JSON: [{{"file": "original/path.ext", "folder": "target/folder"}}, ...]"""
             dst = f"{folder}/{Path(src).name}"
             if src == dst:
                 continue
+            dst_counts[dst] = dst_counts.get(dst, 0) + 1
+            batch_moves.append((src, dst, folder))
+
+        colliding = {d for d, c in dst_counts.items() if c > 1}
+        seen_mkdirs: set[str] = set()
+
+        for src, dst, folder in batch_moves:
+            if dst in colliding:
+                src_dir = str(Path(src).parent)
+                if src_dir and src_dir != ".":
+                    dst = f"{folder}/{src_dir}/{Path(src).name}"
+
             if folder not in seen_mkdirs:
                 all_ops.append({"op": "mkdir", "path": folder})
                 seen_mkdirs.add(folder)
+
+            dst_parent = str(Path(dst).parent)
+            if dst_parent != folder and dst_parent not in seen_mkdirs:
+                all_ops.append({"op": "mkdir", "path": dst_parent})
+                seen_mkdirs.add(dst_parent)
+
             all_ops.append({"op": "move", "from": src, "to": dst,
                             "reason": f"Organized into {folder}"})
 
@@ -999,32 +1255,39 @@ def generate_plan(
 
     Returns (plan_dict, embeddings_or_None).  The embeddings are returned
     so callers can reuse them for deduplication without re-embedding.
+
+    Pipeline (when organizing):
+      1. Embed all files with the small model
+      2. Compute composite distance (embedding cosine ⊕ IDF-weighted path Jaccard)
+      3. Cluster with HDBSCAN on the composite matrix
+      4. Auto-name clusters whose files share a dominant directory prefix
+      5. LLM names the remaining clusters (often 0 when structure is clear)
+      6. Assign files to named clusters (deterministic, no LLM)
     """
     all_ops:    list[dict]    = []
     summaries:  list[str]     = []
     embeddings: np.ndarray | None = None
 
-    # ── Organize / Flatten: embed → cluster → name ────────────────────────────
+    # ── Organize / Flatten: embed → composite cluster → name → assign ─────────
     if do_organize or do_flatten:
         if do_flatten:
             deep = sum(1 for f in files if f["path"].count("/") > 1)
             if deep:
                 print(f"  {deep} deeply-nested file(s) will be flattened.", file=sys.stderr)
 
-        # Step 1: Embed all files with the small embedding model
+        # Step 1: Embed
         print(f"  Embedding {len(files)} files with {EMBED_MODEL}…", file=sys.stderr)
         embeddings = embed_files(files)
 
-        # Step 2: Cluster with HDBSCAN (automatic cluster count)
-        print("  Clustering embeddings with HDBSCAN…", file=sys.stderr)
-        labels = cluster_files(embeddings)
+        # Step 2+3: Composite distance → HDBSCAN
+        print("  Clustering with composite distance (embedding + path IDF)…",
+              file=sys.stderr)
+        labels = cluster_files(files, embeddings)
 
-        # Step 3: Name the clusters with one LLM call
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         if n_clusters == 0:
             print("  Warning: HDBSCAN found no clusters, falling back to LLM taxonomy.",
                   file=sys.stderr)
-            # Fallback to legacy two-phase approach
             folders = plan_folder_taxonomy(files, directory, flatten=do_flatten)
             if folders:
                 preview = ", ".join(folders[:6]) + ("…" if len(folders) > 6 else "")
@@ -1035,24 +1298,44 @@ def generate_plan(
                 n_moves = sum(1 for o in ops if o.get("op") == "move")
                 summaries.append(f"{verb} {n_moves} file(s) into {len(folders)} folder(s).")
         else:
-            print(f"  Naming {n_clusters} cluster(s) via LLM…", file=sys.stderr)
-            cluster_names = name_clusters(files, labels, directory, flatten=do_flatten)
+            # Step 4: Auto-name from directory structure where possible
+            auto_names = _auto_name_from_paths(files, labels)
+            if auto_names:
+                print(f"  Auto-named {len(auto_names)}/{n_clusters} cluster(s) "
+                      f"from directory structure: {', '.join(auto_names.values())}",
+                      file=sys.stderr)
+
+            # Step 5: LLM names the rest
+            llm_names: dict[int, str] = {}
+            remaining = n_clusters - len(auto_names)
+            if remaining > 0:
+                print(f"  Naming {remaining} remaining cluster(s) via LLM…",
+                      file=sys.stderr)
+                llm_names = name_clusters(
+                    files, labels, directory,
+                    flatten=do_flatten,
+                    skip_labels=set(auto_names.keys()),
+                )
+
+            cluster_names = {**auto_names, **llm_names}
 
             if not cluster_names:
                 print("  Warning: cluster naming failed, skipping organize step.",
                       file=sys.stderr)
             else:
-                preview = ", ".join(list(cluster_names.values())[:6])
-                if len(cluster_names) > 6:
+                preview = ", ".join(list(cluster_names.values())[:8])
+                if len(cluster_names) > 8:
                     preview += "…"
                 verb = "Flattened" if do_flatten else "Organized"
-                print(f"  Named {len(cluster_names)} folder(s): {preview}", file=sys.stderr)
+                print(f"  {len(cluster_names)} folder(s): {preview}", file=sys.stderr)
 
-                # Step 4: Assign files to clusters (no LLM needed)
+                # Step 6: Assign files to clusters (deterministic)
                 ops = assign_files_to_clusters(files, labels, cluster_names)
                 all_ops.extend(ops)
                 n_moves = sum(1 for o in ops if o.get("op") == "move")
-                summaries.append(f"{verb} {n_moves} file(s) into {len(cluster_names)} folder(s).")
+                summaries.append(
+                    f"{verb} {n_moves} file(s) into {len(cluster_names)} folder(s)."
+                )
 
     # ── Rename: pre-filtered snippet pass ─────────────────────────────────────
     # Build a path map from organize/flatten ops so rename operates on
@@ -1283,6 +1566,68 @@ JSON output:"""
         return []
 
 
+# ── Intentional variant detection ─────────────────────────────────────────────
+# These patterns strip size, resolution, theme, and version suffixes from
+# filenames to reveal a canonical stem.  Files that share a canonical stem
+# and directory are intentional variants (e.g. favicon-16x16 / favicon-32x32),
+# not true duplicates.
+
+_VARIANT_STRIP_RE = [
+    re.compile(r'@\d+x', re.IGNORECASE),              # icon@2x, icon@3x
+    re.compile(r'[-_]\d+x\d+', re.IGNORECASE),         # favicon-16x16, chrome-192x192
+    re.compile(r'[-@](dark|light)', re.IGNORECASE),     # logo-dark, icon@dark
+    re.compile(r'-v\d+', re.IGNORECASE),                # proposal-v2
+    re.compile(r'[-_](small|medium|large|thumb)', re.IGNORECASE),  # photo-thumb
+]
+
+
+def _canonical_stem(filename: str) -> str:
+    """Strip variant suffixes to get a canonical form for comparison.
+
+    "command-icon@2x"  → "command-icon"
+    "favicon-32x32"    → "favicon"
+    "logo-dark"        → "logo"
+    "conductor-proposal-v2" → "conductor-proposal"
+    """
+    stem = Path(filename).stem
+    for pat in _VARIANT_STRIP_RE:
+        stem = pat.sub('', stem)
+    return stem.rstrip('-_ ')
+
+
+def _is_variant_group(paths: list[str]) -> bool:
+    """True if all files are intentional variants of the same asset.
+
+    Requirements: same canonical stem AND same parent directory.
+    """
+    if len(paths) < 2:
+        return False
+
+    dirs = {str(Path(p).parent) for p in paths}
+    if len(dirs) > 1:
+        return False  # different directories — not variants
+
+    canonical_stems = {_canonical_stem(Path(p).name) for p in paths}
+    return len(canonical_stems) == 1
+
+
+def _filter_variant_dupes(dupe_ops: list[dict]) -> list[dict]:
+    """Remove duplicate groups that are actually intentional asset variants."""
+    filtered: list[dict] = []
+    for op in dupe_ops:
+        files = op.get("files", [])
+        if _is_variant_group(files):
+            names = [Path(f).name for f in files]
+            print(
+                f"  Skipped variant group: {', '.join(names[:4])}"
+                f"{'…' if len(names) > 4 else ''}",
+                file=sys.stderr,
+            )
+            continue
+        filtered.append(op)
+    return filtered
+
+
 def _dedupe_via_embeddings(
     files: list[dict],
     embeddings: np.ndarray,
@@ -1347,25 +1692,29 @@ def find_duplicates(
     1. Fresh embeddings from the organize step (fastest, no extra work)
     2. Cached vectors from the ai-search DB
     3. LLM-based fallback (slowest)
+
+    All paths apply variant filtering to suppress false positives from
+    intentional asset variants (retina, dark/light, size suffixes).
     """
     if embeddings is not None and len(embeddings) == len(files):
         print("  Using fresh embeddings for duplicate detection.", file=sys.stderr)
-        return _dedupe_via_embeddings(files, embeddings)
+        raw = _dedupe_via_embeddings(files, embeddings)
+        return _filter_variant_dupes(raw)
 
     db_result = _dedupe_via_db(directory)
     if db_result is not None:
-        return db_result
+        return _filter_variant_dupes(db_result)
 
     # If we have no embeddings and no DB, embed now then dedupe
     if len(files) <= 5000:
         print("  No cached embeddings — embedding files for duplicate detection…",
               file=sys.stderr)
         fresh = embed_files(files)
-        return _dedupe_via_embeddings(files, fresh)
+        return _filter_variant_dupes(_dedupe_via_embeddings(files, fresh))
 
     print("  No ai-search index found for this directory — using LLM for duplicate detection.",
           file=sys.stderr)
-    return _dedupe_via_llm(files)
+    return _filter_variant_dupes(_dedupe_via_llm(files))
 
 
 # ── Plan Validation ────────────────────────────────────────────────────────────

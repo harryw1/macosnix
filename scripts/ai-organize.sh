@@ -84,7 +84,7 @@ ensure_ollama() {
 
 # ── Interactive prompts (only when not fully specified via flags) ───────────────
 echo ""
-gum style --foreground "#ca9ee6" --bold "󰉓  ai-organize"
+gum style --foreground "#ca9ee6" --bold --border rounded --border-foreground "#585b70" --padding "0 1" "󰉓  ai-organize"
 echo ""
 
 # 1. Target directory
@@ -144,7 +144,8 @@ $DO_ALL_FILES && PY_FLAGS="$PY_FLAGS --all-files"
 ensure_ollama
 
 echo ""
-gum style --bold "Analyzing: $TARGET_DIR"
+gum style --foreground "#b7bdf8" --bold "Analyzing: $(basename "$TARGET_DIR")"
+gum style --faint "$TARGET_DIR"
 echo ""
 
 # ── Step 1: scan (fast — show spinner) ────────────────────────────────────────
@@ -181,6 +182,8 @@ fi
 # ── Display plan ───────────────────────────────────────────────────────────────
 PLAN_FILE="$PLAN_FILE" python3 - <<'PYEOF'
 import json, os, sys
+from pathlib import Path
+from collections import defaultdict
 
 plan_file = os.environ["PLAN_FILE"]
 with open(plan_file) as f:
@@ -189,15 +192,26 @@ with open(plan_file) as f:
 ops     = plan.get("operations", [])
 summary = plan.get("summary", "")
 
-reset  = "\033[0m"
-bold   = "\033[1m"
-dim    = "\033[2m"
-blue   = "\033[38;5;111m"
-green  = "\033[38;5;114m"
-yellow = "\033[38;5;221m"
-pink   = "\033[38;5;213m"
-gray   = "\033[38;5;244m"
-red    = "\033[38;5;203m"
+# ── Catppuccin Macchiato palette ──────────────────────────────────────────────
+R   = "\033[0m"       # reset
+B   = "\033[1m"       # bold
+D   = "\033[2m"       # dim
+lav = "\033[38;5;183m"  # lavender — headers
+grn = "\033[38;5;114m"  # green — moves/success
+ylw = "\033[38;5;221m"  # yellow — renames/warnings
+mau = "\033[38;5;213m"  # mauve — accents
+gry = "\033[38;5;244m"  # gray — secondary text
+red = "\033[38;5;203m"  # red — errors/dupes
+blu = "\033[38;5;111m"  # blue — folders
+tl  = "\033[38;5;243m"  # tree lines (dim gray)
+
+# ── Box-drawing characters ────────────────────────────────────────────────────
+H  = "─"   # horizontal
+TL = "╭"   # top-left
+TR = "╮"   # top-right
+BL = "╰"   # bottom-left
+BR = "╯"   # bottom-right
+V  = "│"   # vertical
 
 mkdirs  = [o for o in ops if o.get("op") == "mkdir"]
 moves   = [o for o in ops if o.get("op") == "move"]
@@ -208,58 +222,142 @@ actionable = len(moves) + len(renames)
 total      = actionable + len(dupes)
 
 if total == 0:
-    print(f"{yellow}No changes suggested.{reset}")
+    print(f"  {ylw}No changes suggested.{R}")
     sys.exit(0)
 
+# ── Summary bar ───────────────────────────────────────────────────────────────
 if summary:
-    print(f"{bold}{blue}Summary:{reset} {summary}")
+    print(f"  {B}{lav}{summary}{R}")
     print()
 
-# ── Moves ──────────────────────────────────────────────────────────────────────
+# ── Proposed folder structure (tree view) ──────────────────────────────────────
+if mkdirs:
+    # Build a tree from mkdir paths
+    tree: dict = {}
+    for op in mkdirs:
+        parts = op["path"].split("/")
+        node = tree
+        for part in parts:
+            node = node.setdefault(part, {})
+
+    def print_tree(node, prefix="  ", is_last_map=None):
+        if is_last_map is None:
+            is_last_map = []
+        items = sorted(node.keys())
+        for i, name in enumerate(items):
+            is_last = (i == len(items) - 1)
+            # Build the connector
+            if not is_last_map:
+                connector = ""
+            elif is_last:
+                connector = f"{tl}{BL}{H}{R} "
+            else:
+                connector = f"{tl}{V}{R}  " if False else f"{tl}├{H}{R} "
+            # Build the continuation prefix for children
+            indent = ""
+            for was_last in is_last_map:
+                indent += f"    " if was_last else f" {tl}{V}{R}  "
+            print(f"  {indent}{connector}{blu}{B}{name}/{R}")
+            # Recurse into children
+            print_tree(node[name], prefix, is_last_map + [is_last])
+
+    print(f"  {B}{blu}Folder structure{R}")
+    print_tree(tree)
+    print()
+
+# ── Moves (grouped by destination folder) ─────────────────────────────────────
 if moves:
-    print(f"{bold}{green}  Moves  ({len(moves)}){reset}")
+    print(f"  {B}{grn}Moves{R}  {gry}({len(moves)} files){R}")
+    print()
+
+    # Group moves by destination folder
+    by_folder: dict[str, list[dict]] = defaultdict(list)
     for op in moves:
-        reason = f"  {gray}← {op.get('reason','')}{reset}" if op.get("reason") else ""
-        print(f"  {dim}from{reset}  {op['from']}")
-        print(f"  {green}  to{reset}  {op['to']}{reason}")
+        folder = str(Path(op["to"]).parent)
+        by_folder[folder].append(op)
+
+    MAX_SHOW = 6  # max files to show per folder before collapsing
+
+    for folder in sorted(by_folder.keys()):
+        folder_ops = by_folder[folder]
+        print(f"    {blu}{folder}/{R}  {gry}({len(folder_ops)} files){R}")
+
+        show = folder_ops[:MAX_SHOW]
+        for op in show:
+            src_name = Path(op["from"]).name
+            dst_name = Path(op["to"]).name
+            src_dir  = str(Path(op["from"]).parent)
+            # Show the source origin in gray
+            if src_name == dst_name:
+                print(f"      {grn}←{R} {D}{src_dir}/{R}{src_name}")
+            else:
+                print(f"      {grn}←{R} {D}{op['from']}{R}  →  {grn}{dst_name}{R}")
+
+        remaining = len(folder_ops) - MAX_SHOW
+        if remaining > 0:
+            print(f"      {gry}… and {remaining} more{R}")
         print()
 
 # ── Renames ────────────────────────────────────────────────────────────────────
 if renames:
-    print(f"{bold}{yellow}  Renames  ({len(renames)}){reset}")
-    for op in renames:
-        reason = f"  {gray}← {op.get('reason','')}{reset}" if op.get("reason") else ""
-        print(f"  {dim}{op['from']}{reset}  →  {yellow}{op['to']}{reset}{reason}")
+    print(f"  {B}{ylw}Renames{R}  {gry}({len(renames)} files){R}")
     print()
-
-# ── New folders ────────────────────────────────────────────────────────────────
-if mkdirs:
-    print(f"{bold}{blue}  New folders  ({len(mkdirs)}){reset}")
-    for op in mkdirs:
-        print(f"  {blue}  {op['path']}/{reset}")
+    for op in renames:
+        src_dir  = str(Path(op["from"]).parent)
+        src_name = Path(op["from"]).name
+        dst_name = Path(op["to"]).name
+        reason   = f"  {gry}← {op['reason']}{R}" if op.get("reason") else ""
+        prefix   = f"{D}{src_dir}/{R}" if src_dir != "." else ""
+        print(f"    {prefix}{D}{src_name}{R}  →  {ylw}{dst_name}{R}{reason}")
     print()
 
 # ── Duplicates ─────────────────────────────────────────────────────────────────
 if dupes:
-    print(f"{bold}{red}  Duplicate groups  ({len(dupes)}){reset}")
+    print(f"  {B}{red}Duplicates{R}  {gry}({len(dupes)} groups){R}")
+    print()
     for i, op in enumerate(dupes, 1):
-        files_str = ", ".join(op.get("files", []))
-        print(f"  {red}Group {i}:{reset} {files_str}")
+        files = op.get("files", [])
+        # Show as a compact list with the common directory factored out
+        dirs = {str(Path(f).parent) for f in files}
+        if len(dirs) == 1:
+            common_dir = dirs.pop()
+            names = [Path(f).name for f in files]
+            if common_dir != ".":
+                print(f"    {red}{i}.{R} {D}{common_dir}/{R}{', '.join(names)}")
+            else:
+                print(f"    {red}{i}.{R} {', '.join(names)}")
+        else:
+            print(f"    {red}{i}.{R} {', '.join(files)}")
         if op.get("reason"):
-            print(f"  {gray}{op['reason']}{reset}")
-        print()
+            print(f"       {gry}{op['reason']}{R}")
+    print()
 
-print(f"{dim}─────────────────────────────────────────────────{reset}")
-print(f"  {actionable} file operation(s)  ·  {len(dupes)} duplicate group(s)")
+# ── Footer ─────────────────────────────────────────────────────────────────────
+bar = f"{gry}{H * 52}{R}"
+print(bar)
+
+parts = []
+if moves:
+    parts.append(f"{grn}{len(moves)}{R} move{'s' if len(moves) != 1 else ''}")
+if renames:
+    parts.append(f"{ylw}{len(renames)}{R} rename{'s' if len(renames) != 1 else ''}")
+if dupes:
+    parts.append(f"{red}{len(dupes)}{R} duplicate group{'s' if len(dupes) != 1 else ''}")
+
+print(f"  {' · '.join(parts)}")
 
 # ── Validation warnings ──────────────────────────────────────────────────
 warnings = plan.get("warnings", [])
 if warnings:
     print()
-    print(f"{bold}{yellow}  Quality checks{reset}")
+    print(f"  {B}{ylw}Quality checks{R}")
     for w in warnings:
-        icon = f"{yellow}⚠{reset}" if w.get("level") == "warn" else f"{red}✗{reset}"
+        icon = f"{ylw}⚠{R}" if w.get("level") == "warn" else f"{red}✗{R}"
         print(f"  {icon} {w['msg']}")
+
+# Footer check marks
+if not warnings:
+    print(f"  {grn}✓{R} {gry}No quality issues{R}")
 PYEOF
 
 # ── Determine if there's anything to apply ─────────────────────────────────────
@@ -305,7 +403,7 @@ gum spin --spinner dot --title "Applying changes…" -- \
   bash -c "uv run \"$PY_SCRIPT\" --apply \"$PLAN_FILE\""
 
 echo ""
-gum style --foreground "#a6d189" --bold " Done!"
+gum style --foreground "#a6d189" --bold --border rounded --border-foreground "#585b70" --padding "0 1" "  Done!"
 
 DUPE_COUNT=$(PLAN_FILE="$PLAN_FILE" python3 -c "
 import json, os

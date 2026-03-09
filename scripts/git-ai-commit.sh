@@ -117,8 +117,10 @@ if [ -z "$COMMIT_MSG" ]; then
 fi
 
 # ── Display proposed message ───────────────────────────────────────────────────
+TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
 echo ""
 gum style \
+  --width "$TERM_WIDTH" \
   --border double --padding "1 2" \
   "$COMMIT_MSG"
 echo ""
