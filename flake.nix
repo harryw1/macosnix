@@ -55,6 +55,7 @@
             {
               home-manager.useGlobalPkgs = true;
               home-manager.useUserPackages = true;
+              home-manager.backupFileExtension = "backup";
               home-manager.users.${username} = import ./modules/home-manager;
               home-manager.extraSpecialArgs = { inherit username flavor; };
               home-manager.sharedModules = [

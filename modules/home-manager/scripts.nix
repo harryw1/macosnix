@@ -1,6 +1,29 @@
-{ pkgs, ... }:
+{ pkgs, flavor ? "frappe", ... }:
 
 let
+  # ── Catppuccin palette lookup for gum wrapper ───────────────────────────────
+  gumColors = {
+    latte = {
+      accent   = "#ea76cb"; # Pink
+      text     = "#4c4f69"; # Text
+      surface1 = "#ccd0da"; # Surface1
+    };
+    frappe = {
+      accent   = "#ca9ee6"; # Pink
+      text     = "#c6d0f5"; # Text
+      surface1 = "#414559"; # Surface1
+    };
+    macchiato = {
+      accent   = "#f5bde6"; # Pink
+      text     = "#cad3f5"; # Text
+      surface1 = "#494d64"; # Surface1
+    };
+    mocha = {
+      accent   = "#f5c2e7"; # Pink
+      text     = "#cdd6f4"; # Text
+      surface1 = "#45475a"; # Surface1
+    };
+  }.${flavor};
   pyinit = pkgs.writeShellScriptBin "pyinit" ''
     #!/usr/bin/env bash
     set -euo pipefail
@@ -468,27 +491,13 @@ README
 
   gum-wrapped = pkgs.writeShellScriptBin "gum" ''
     #!/usr/bin/env bash
-    
-    # Check macOS interface style
-    # "Dark" if dark mode, empty or "Light" expected if light mode
-    THEME=$(defaults read -g AppleInterfaceStyle 2>/dev/null || echo "Light")
 
-    # Catppuccin Colors
-    if [ "$THEME" = "Dark" ]; then
-      # Frappé
-      SPINNER="#ca9ee6" # Pink
-      BORDER="#ca9ee6"  # Pink
-      TEXT="#c6d0f5"    # Text
-      SEL_BG="#414559"  # Surface1
-      SEL_FG="#ca9ee6"  # Pink
-    else
-      # Latte
-      SPINNER="#ea76cb" # Pink
-      BORDER="#ea76cb"  # Pink
-      TEXT="#4c4f69"    # Text
-      SEL_BG="#ccd0da"  # Surface1
-      SEL_FG="#ea76cb"  # Pink
-    fi
+    # Catppuccin ${flavor} — colors injected at build time via flavor variable
+    SPINNER="${gumColors.accent}"
+    BORDER="${gumColors.accent}"
+    TEXT="${gumColors.text}"
+    SEL_BG="${gumColors.surface1}"
+    SEL_FG="${gumColors.accent}"
 
     # Spin styling
     export GUM_SPIN_SPINNER="dot"
