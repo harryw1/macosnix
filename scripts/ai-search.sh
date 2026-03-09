@@ -87,7 +87,8 @@ ensure_ollama() {
 # ── Handle Commands ────────────────────────────────────────────────────────────
 
 if [ "$DO_CLEAR" = true ]; then
-  gum confirm "Are you sure you want to delete the search database at $APP_DIR/vectors.db?" || exit 0
+  gum confirm "Delete the search database at $APP_DIR/vectors.db?" \
+    --affirmative "Yes, delete" --negative "No, keep" || exit 0
   uv run "$PY_SCRIPT" --clear
   exit 0
 fi
@@ -146,7 +147,7 @@ if [ -n "$SEARCH_QUERY" ]; then
   trap 'rm -f "$RESULTS_FILE"' EXIT
   export RESULTS_FILE
   
-  gum spin --spinner dot --title "󰚩  Searching..." -- \
+  gum spin --title "󰚩  Searching..." -- \
     sh -c "uv run \"$PY_SCRIPT\" --search \"$SEARCH_QUERY\" > \"$RESULTS_FILE\""
 
   # Check if empty (no results or error)
@@ -157,7 +158,7 @@ if [ -n "$SEARCH_QUERY" ]; then
   
   # Format output beautifully using python to parse JSON and gum to style
   echo ""
-  gum style --foreground "#ca9ee6" --bold "Top Semantic Matches:"
+  gum log --level info "Top Semantic Matches"
   echo ""
 
   python3 -c "

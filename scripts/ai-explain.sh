@@ -104,7 +104,7 @@ print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 
 export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-gum spin --spinner dot --title "󰚩  Thinking with $MODEL..." -- \
+gum spin --title "󰚩  Thinking with $MODEL..." -- \
   sh -c 'curl -s http://localhost:11434/api/generate \
     -H "Content-Type: application/json" \
     -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'

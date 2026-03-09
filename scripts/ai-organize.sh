@@ -84,7 +84,7 @@ ensure_ollama() {
 
 # ── Interactive prompts (only when not fully specified via flags) ───────────────
 echo ""
-gum style --foreground "#ca9ee6" --bold --border rounded --border-foreground "#585b70" --padding "0 1" "󰉓  ai-organize"
+gum style --bold --border rounded --padding "0 1" "󰉓  ai-organize"
 echo ""
 
 # 1. Target directory
@@ -144,7 +144,7 @@ $DO_ALL_FILES && PY_FLAGS="$PY_FLAGS --all-files"
 ensure_ollama
 
 echo ""
-gum style --foreground "#b7bdf8" --bold "Analyzing: $(basename "$TARGET_DIR")"
+gum log --level info "Analyzing: $(basename "$TARGET_DIR")"
 gum style --faint "$TARGET_DIR"
 echo ""
 
@@ -158,7 +158,7 @@ SCAN_FLAGS=""
 $DO_TOP_LEVEL && SCAN_FLAGS="$SCAN_FLAGS --top-level"
 $DO_ALL_FILES && SCAN_FLAGS="$SCAN_FLAGS --all-files"
 
-gum spin --spinner dot --title "Scanning files…" -- \
+gum spin --title "Scanning files…" -- \
   bash -c "uv run \"$PY_SCRIPT\" --scan \"$TARGET_DIR\" $SCAN_FLAGS > \"$SCAN_FILE\""
 
 FILE_COUNT=$(python3 -c "import json; print(len(json.load(open('$SCAN_FILE'))))")
@@ -372,10 +372,10 @@ print('yes' if any(o.get('op') in ('mkdir','move','rename') for o in ops) else '
 if [[ "$HAS_ACTIONS" == "no" ]]; then
   echo ""
   if $DO_DEDUPE; then
-    gum style --foreground "#a6d189" "No file moves or renames to apply."
+    gum log --level info "No file moves or renames to apply."
     echo "  Duplicate groups above are informational — review and remove manually."
   else
-    gum style --foreground "#e5c890" "No changes suggested for this directory."
+    gum log --level warn "No changes suggested for this directory."
   fi
   exit 0
 fi
@@ -384,26 +384,27 @@ echo ""
 
 # ── Dry-run path ───────────────────────────────────────────────────────────────
 if $DO_DRY_RUN; then
-  gum style --foreground "#e5c890" --bold "Dry run — no changes will be made:"
+  gum log --level warn "Dry run — no changes will be made:"
   echo ""
   uv run "$PY_SCRIPT" --apply "$PLAN_FILE" --dry-run
   echo ""
-  gum style --foreground "#e5c890" "Run without --dry-run to apply."
+  gum log --level info "Run without --dry-run to apply."
   exit 0
 fi
 
 # ── Confirm and apply ──────────────────────────────────────────────────────────
-if ! gum confirm "Apply these changes to $(basename "$TARGET_DIR")?"; then
+if ! gum confirm "Apply these changes to $(basename "$TARGET_DIR")?" \
+  --affirmative "Yes, apply" --negative "No, cancel"; then
   echo "Aborted. No changes made."
   exit 0
 fi
 
 echo ""
-gum spin --spinner dot --title "Applying changes…" -- \
+gum spin --title "Applying changes…" -- \
   bash -c "uv run \"$PY_SCRIPT\" --apply \"$PLAN_FILE\""
 
 echo ""
-gum style --foreground "#a6d189" --bold --border rounded --border-foreground "#585b70" --padding "0 1" "  Done!"
+gum style --bold --border rounded --padding "0 1" "  Done!"
 
 DUPE_COUNT=$(PLAN_FILE="$PLAN_FILE" python3 -c "
 import json, os

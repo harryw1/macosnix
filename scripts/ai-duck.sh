@@ -130,7 +130,7 @@ payload = {
 print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 
-gum spin --spinner dot --title "󰚩  Generating query with $MODEL..." -- \
+gum spin --title "󰚩  Generating query with $MODEL..." -- \
   sh -c 'curl -s http://localhost:11434/api/generate \
     -H "Content-Type: application/json" \
     -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'

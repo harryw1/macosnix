@@ -89,7 +89,7 @@ print(json.dumps(payload))
 trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
 
 export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-gum spin --spinner dot --title "󰚩  Generating commit message with $MODEL..." -- \
+gum spin --title "󰚩  Generating commit message with $MODEL..." -- \
   sh -c 'curl -s http://localhost:11434/api/generate -H "Content-Type: application/json" -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
 # Parse response; fall back to awk anchor on commit type if model ignored think:false
@@ -155,7 +155,7 @@ case "$ACTION" in
   EDITED=$(cat "$TMPFILE")
   rm -f "$TMPFILE"
   if [ -n "$EDITED" ]; then
-    STAGE=$(gum choose --header "Stage files?" "Stage all" "Staged only")
+    STAGE=$(gum choose --header "How should files be staged?" "Stage all" "Staged only")
     [ "$STAGE" = "Stage all" ] && git add -A
     printf '%s\n' "$EDITED" | git commit -F -
     echo ""

@@ -41,23 +41,23 @@ let
     # 4. Initialize uv project
     case "$TEMPLATE" in
       "Library (src-layout)")
-        $GUM spin --spinner dot --title "Initializing Library..." -- $UV init --lib
+        $GUM spin --title "Initializing Library..." -- $UV init --lib
         ;;
       "Data & Research (marimo-focused)")
-        $GUM spin --spinner dot --title "Initializing Research project..." -- $UV init --app
+        $GUM spin --title "Initializing Research project..." -- $UV init --app
         mkdir -p data notebooks
         ;;
     esac
 
     # 5. Add standard dev dependencies
-    $GUM spin --spinner pulse --title "Adding core dev tools (ruff, pyright, pytest, pytest-cov, pre-commit)..." -- $UV add --dev ruff pyright pytest pytest-cov pre-commit
+    $GUM spin --title "Adding core dev tools (ruff, pyright, pytest, pytest-cov, pre-commit)..." -- $UV add --dev ruff pyright pytest pytest-cov pre-commit
 
     if [[ "$TEMPLATE" == *"Research"* ]]; then
-      $GUM spin --spinner pulse --title "Adding research tools (marimo)..." -- $UV add marimo
+      $GUM spin --title "Adding research tools (marimo)..." -- $UV add marimo
     fi
 
     # 5.5 Prepare the virtual environment
-    $GUM spin --spinner pulse --title "Syncing dependencies and preparing .venv..." -- $UV sync
+    $GUM spin --title "Syncing dependencies and preparing .venv..." -- $UV sync
 
     # 6. Create robust .gitignore
     cat <<EOF > .gitignore
@@ -372,7 +372,7 @@ EOF
     mkdir -p "$PROJECT_NAME"
     cd "$PROJECT_NAME" || exit
 
-    gum spin --spinner dot --title "Scaffolding folder structure..." -- \
+    gum spin --title "Scaffolding folder structure..." -- \
       bash -c 'mkdir -p data/raw data/processed figures reports/drafts notebooks src references'
 
     # 5. .gitignore
@@ -503,6 +503,15 @@ README
     export GUM_INPUT_PROMPT_FOREGROUND=$SPINNER
     export GUM_INPUT_CURSOR_FOREGROUND=$SPINNER
     
+    # Confirm styling
+    export GUM_CONFIRM_SELECTED_FOREGROUND=$SEL_FG
+
+    # Log styling
+    export GUM_LOG_LEVEL_FOREGROUND=$SPINNER
+
+    # Write styling
+    export GUM_WRITE_CURSOR_FOREGROUND=$SPINNER
+
     # Default Style Fallbacks
     export GUM_STYLE_FOREGROUND=$TEXT
     export GUM_STYLE_BORDER_FOREGROUND=$BORDER

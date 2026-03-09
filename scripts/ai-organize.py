@@ -508,19 +508,108 @@ def _file_embed_text(f: dict) -> str:
     return f["path"]
 
 
-def embed_files(files: list[dict]) -> np.ndarray:
+def _load_cached_embeddings(directory: str) -> dict[str, list[float]] | None:
+    """Load averaged embeddings from the ai-search SQLite DB for *directory*.
+
+    Returns a dict mapping relative file paths to float vectors, or None if
+    the DB doesn't exist or can't be read.  Multiple chunks per file are
+    averaged into a single representative vector.
+    """
+    if not SEARCH_DB_PATH.exists():
+        return None
+
+    abs_dir = str(Path(directory).resolve())
+    prefix  = abs_dir.rstrip("/") + "/"
+
+    try:
+        import sqlite_vec  # type: ignore[import-untyped]
+        conn = sqlite3.connect(SEARCH_DB_PATH)
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT m.filepath, e.embedding "
+            "FROM file_metadata m "
+            "JOIN file_embeddings e ON m.rowid = e.rowid "
+            "WHERE m.filepath LIKE ?",
+            (prefix + "%",),
+        )
+        rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        print(f"  Note: Could not read ai-search DB for cache ({e}).", file=sys.stderr)
+        return None
+
+    if not rows:
+        return None
+
+    # Average multiple chunks per file into one vector
+    file_vecs: dict[str, list[float]] = {}
+    file_cnts: dict[str, int]         = {}
+    vec_len: int | None               = None
+
+    for filepath, vec_bytes in rows:
+        if vec_bytes is None:
+            continue
+        rel = filepath.removeprefix(prefix)
+        if vec_len is None:
+            vec_len = len(vec_bytes) // 4
+        vec = list(struct.unpack(f"<{vec_len}f", vec_bytes))
+        if rel in file_vecs:
+            file_vecs[rel] = [a + b for a, b in zip(file_vecs[rel], vec)]
+            file_cnts[rel] += 1
+        else:
+            file_vecs[rel] = vec
+            file_cnts[rel] = 1
+
+    if not file_vecs:
+        return None
+
+    # Divide accumulated sums by count to get averages
+    for rel in file_vecs:
+        cnt = file_cnts[rel]
+        if cnt > 1:
+            file_vecs[rel] = [v / cnt for v in file_vecs[rel]]
+
+    return file_vecs
+
+
+def embed_files(files: list[dict], directory: str | None = None) -> np.ndarray:
     """Embed every file's metadata via the Ollama embeddings endpoint.
+
+    When *directory* is provided, checks the ai-search SQLite DB first for
+    cached embeddings.  Files with a cache hit skip the Ollama API call,
+    which can dramatically speed up repeated runs.
 
     Returns an (N, D) float32 numpy array where N = len(files) and D is
     the embedding dimensionality of EMBED_MODEL.
     """
+    # ── Try loading cached embeddings from ai-search DB ──────────────────────
+    cache: dict[str, list[float]] | None = None
+    if directory:
+        cache = _load_cached_embeddings(directory)
+        if cache:
+            hits = sum(1 for f in files if f["path"] in cache)
+            print(
+                f"  Found {hits}/{len(files)} cached embeddings in ai-search DB.",
+                file=sys.stderr,
+            )
+
     vectors: list[list[float]] = []
     total = len(files)
+    api_calls = 0
 
     for i, f in enumerate(files):
         if i % EMBED_BATCH_LOG == 0 and i > 0:
-            print(f"  Embedded {i}/{total} files…", file=sys.stderr)
+            print(f"  Embedded {i}/{total} files ({api_calls} API calls)…", file=sys.stderr)
 
+        # Check cache first
+        if cache and f["path"] in cache:
+            vectors.append(cache[f["path"]])
+            continue
+
+        api_calls += 1
         text = _file_embed_text(f)
         payload = {
             "model":  EMBED_MODEL,
@@ -544,7 +633,8 @@ def embed_files(files: list[dict]) -> np.ndarray:
             dim = len(vectors[-1]) if vectors else 384
             vectors.append([0.0] * dim)
 
-    print(f"  Embedded {total}/{total} files.", file=sys.stderr)
+    print(f"  Embedded {total}/{total} files ({api_calls} API calls, "
+          f"{total - api_calls} cached).", file=sys.stderr)
     return np.array(vectors, dtype=np.float32)
 
 
@@ -685,6 +775,7 @@ def cluster_files(
         clusterer = HDBSCAN(
             min_cluster_size=min_cluster,
             metric="precomputed",
+            copy=True,
         )
         labels = clusterer.fit_predict(dist_matrix)
     else:
@@ -693,6 +784,7 @@ def cluster_files(
         clusterer = HDBSCAN(
             min_cluster_size=min_cluster,
             metric="euclidean",
+            copy=True,
         )
         labels = clusterer.fit_predict(normed)
 
@@ -833,6 +925,7 @@ JSON:"""
 def _auto_name_from_paths(
     files: list[dict],
     labels: np.ndarray,
+    depth: int = 1,
 ) -> dict[int, str]:
     """Name clusters from their dominant directory prefix — no LLM needed.
 
@@ -840,6 +933,9 @@ def _auto_name_from_paths(
     directory is used as the folder name.  This avoids sending obvious cases
     to the LLM (where a small model might invent something worse like
     "social-icons" when the answer is clearly "raycast-ai-applescript").
+
+    *depth* controls which path level to use (1 = top-level dir, 2 = 2nd-level,
+    etc.).  Used by _refine_dominant_clusters to sub-name large directories.
     """
     from collections import Counter
 
@@ -852,8 +948,10 @@ def _auto_name_from_paths(
         top_dirs: Counter[str] = Counter()
         for idx in indices:
             parts = files[idx]["path"].split("/")
-            if len(parts) > 1:
-                top_dirs[parts[0]] += 1
+            if len(parts) > depth:
+                # Use the path prefix down to the requested depth
+                key = "/".join(parts[:depth])
+                top_dirs[key] += 1
             else:
                 top_dirs["_root_"] += 1
 
@@ -869,6 +967,92 @@ def _auto_name_from_paths(
             auto_names[label] = dominant_dir
 
     return auto_names
+
+
+# ── Concentration threshold ──────────────────────────────────────────────────
+# If a single auto-named folder receives more than this fraction of ALL
+# organized files, we refine those clusters by sub-clustering at a deeper
+# directory level.
+DOMINANT_FOLDER_THRESHOLD = 0.40
+
+
+def _refine_dominant_clusters(
+    files: list[dict],
+    labels: np.ndarray,
+    auto_names: dict[int, str],
+    total_files: int,
+) -> dict[int, str]:
+    """Detect when one auto-named folder dominates and sub-name its clusters.
+
+    Problem: if 80% of files are under ``backups/``, every cluster whose
+    dominant top-level dir is ``backups`` gets named "backups" — which just
+    recreates the original structure.  This function detects that and tries
+    naming those clusters using the *second* directory level (depth=2), giving
+    names like ``backups/pi_migration``, ``backups/website``, etc.
+
+    If the second level still doesn't disambiguate (e.g. all files are
+    ``backups/data/…``), the label is removed so the LLM can name it instead.
+    """
+    from collections import Counter
+
+    if not auto_names or total_files == 0:
+        return auto_names
+
+    # Count how many files each auto-name covers
+    name_file_counts: Counter[str] = Counter()
+    for label, name in auto_names.items():
+        n = int(np.sum(labels == label))
+        name_file_counts[name] += n
+
+    refined = dict(auto_names)
+    for name, count in name_file_counts.items():
+        if count / total_files <= DOMINANT_FOLDER_THRESHOLD:
+            continue
+
+        print(
+            f"  Dominant folder '{name}' covers {count}/{total_files} files "
+            f"({count*100//total_files}%) — refining with depth-2 sub-names…",
+            file=sys.stderr,
+        )
+
+        # Re-name just the clusters currently mapped to this dominant name
+        dominant_labels = [lbl for lbl, n in auto_names.items() if n == name]
+
+        for lbl in dominant_labels:
+            indices = np.where(labels == lbl)[0]
+            # Try depth=2 for this cluster
+            dir_counter: Counter[str] = Counter()
+            for idx in indices:
+                parts = files[idx]["path"].split("/")
+                if len(parts) > 2:
+                    dir_counter["/".join(parts[:2])] += 1
+                else:
+                    dir_counter["_shallow_"] += 1
+
+            if not dir_counter:
+                continue
+
+            best_dir, best_count = dir_counter.most_common(1)[0]
+            pct = best_count / len(indices)
+
+            if best_dir == "_shallow_" or pct < 0.5:
+                # Depth-2 doesn't help — remove so LLM names it
+                del refined[lbl]
+                print(
+                    f"    Cluster {lbl}: depth-2 inconclusive, deferring to LLM.",
+                    file=sys.stderr,
+                )
+            elif best_dir == name:
+                # Depth-2 gave the same prefix (shouldn't happen but guard)
+                del refined[lbl]
+            else:
+                refined[lbl] = best_dir
+                print(
+                    f"    Cluster {lbl}: refined '{name}' → '{best_dir}' ({pct:.0%})",
+                    file=sys.stderr,
+                )
+
+    return refined
 
 
 def assign_files_to_clusters(
@@ -911,13 +1095,17 @@ def assign_files_to_clusters(
     # Track which disambiguated dsts are still colliding so we can escalate
     for _idx, src, dst, folder in raw_moves:
         if dst in colliding_dsts:
-            # Use the full source directory path to disambiguate.
-            # "project-a/assets/icon.png" → "folder/project-a/assets/icon.png"
-            # This handles cases where the immediate parent is the same
-            # across colliding files (e.g. both have "assets/icon.png").
-            src_dir = str(Path(src).parent)
-            if src_dir and src_dir != ".":
-                dst = f"{folder}/{src_dir}/{Path(src).name}"
+            # Disambiguate using up to 2 leading components of the source
+            # path.  Full source paths create absurdly deep nesting like
+            # "backups/backups/pi_migration/var/www/…".  Two components are
+            # almost always enough to uniquely identify the origin project
+            # (e.g. "backups/pi_migration") without burying the file.
+            src_parts = Path(src).parts  # ('backups','pi_migration','var','icon.png')
+            # Use at most the first 2 directory components (excluding filename)
+            dir_parts = src_parts[:-1]  # directories only
+            prefix = "/".join(dir_parts[:2]) if dir_parts else ""
+            if prefix:
+                dst = f"{folder}/{prefix}/{Path(src).name}"
             else:
                 # Top-level file — use the stem as a prefix
                 dst = f"{folder}/{Path(src).stem}-dup{Path(src).suffix}"
@@ -1093,6 +1281,15 @@ def _call_llm_for_list(
                     file=sys.stderr,
                 )
                 return lists[0]
+            # Single-item quirk: LLM returns a bare dict that looks like one
+            # element of the expected array (e.g. {"from": …, "to": …}).
+            # Wrap it in a list so the caller gets the expected shape.
+            if parsed and not lists:
+                print(
+                    f"  Note: {label} returned a single dict item, wrapping in list.",
+                    file=sys.stderr,
+                )
+                return [parsed]
 
         preview = str(parsed)[:200]
         print(
@@ -1162,9 +1359,10 @@ JSON: [{{"file": "original/path.ext", "folder": "target/folder"}}, ...]"""
 
         for src, dst, folder in batch_moves:
             if dst in colliding:
-                src_dir = str(Path(src).parent)
-                if src_dir and src_dir != ".":
-                    dst = f"{folder}/{src_dir}/{Path(src).name}"
+                dir_parts = Path(src).parts[:-1]
+                prefix = "/".join(dir_parts[:2]) if dir_parts else ""
+                if prefix:
+                    dst = f"{folder}/{prefix}/{Path(src).name}"
 
             if folder not in seen_mkdirs:
                 all_ops.append({"op": "mkdir", "path": folder})
@@ -1275,9 +1473,9 @@ def generate_plan(
             if deep:
                 print(f"  {deep} deeply-nested file(s) will be flattened.", file=sys.stderr)
 
-        # Step 1: Embed
+        # Step 1: Embed (with DB cache when available)
         print(f"  Embedding {len(files)} files with {EMBED_MODEL}…", file=sys.stderr)
-        embeddings = embed_files(files)
+        embeddings = embed_files(files, directory=directory)
 
         # Step 2+3: Composite distance → HDBSCAN
         print("  Clustering with composite distance (embedding + path IDF)…",
@@ -1304,6 +1502,13 @@ def generate_plan(
                 print(f"  Auto-named {len(auto_names)}/{n_clusters} cluster(s) "
                       f"from directory structure: {', '.join(auto_names.values())}",
                       file=sys.stderr)
+
+            # Step 4b: Refine dominant folders (e.g. 80% → "backups") by
+            # sub-naming at depth-2 so we get "backups/pi_migration" etc.
+            total_non_noise = int(np.sum(labels != -1))
+            auto_names = _refine_dominant_clusters(
+                files, labels, auto_names, total_non_noise,
+            )
 
             # Step 5: LLM names the rest
             llm_names: dict[int, str] = {}
@@ -1709,7 +1914,7 @@ def find_duplicates(
     if len(files) <= 5000:
         print("  No cached embeddings — embedding files for duplicate detection…",
               file=sys.stderr)
-        fresh = embed_files(files)
+        fresh = embed_files(files, directory=directory)
         return _filter_variant_dupes(_dedupe_via_embeddings(files, fresh))
 
     print("  No ai-search index found for this directory — using LLM for duplicate detection.",

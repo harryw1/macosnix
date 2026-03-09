@@ -714,7 +714,7 @@ class TestCollisionEdgeCases:
         assert len(set(dsts)) == len(dsts), f"Three-way collision not resolved: {dsts}"
 
     def test_collision_preserves_project_structure(self):
-        """Disambiguated paths should contain the source directory context."""
+        """Disambiguated paths should contain the source directory context (up to 2 levels)."""
         files = [
             {"path": "project-a/assets/icon.png"},
             {"path": "project-b/assets/icon.png"},
@@ -724,9 +724,27 @@ class TestCollisionEdgeCases:
         ops = mod.assign_files_to_clusters(files, labels, cluster_names)
         moves = [o for o in ops if o.get("op") == "move"]
         dsts = [m["to"] for m in moves]
-        # The full source dir should be preserved for disambiguation
+        # The first 2 dir components should be preserved for disambiguation
         assert any("project-a" in d for d in dsts)
         assert any("project-b" in d for d in dsts)
+
+    def test_collision_caps_at_two_levels(self):
+        """Deeply nested sources should only use 2 dir levels in disambiguation."""
+        files = [
+            {"path": "backups/pi_migration/var/www/public/icon.png"},
+            {"path": "backups/website/var/www/public/icon.png"},
+        ]
+        labels = np.array([0, 0])
+        cluster_names = {0: "assets"}
+        ops = mod.assign_files_to_clusters(files, labels, cluster_names)
+        moves = [o for o in ops if o.get("op") == "move"]
+        dsts = [m["to"] for m in moves]
+        for d in dsts:
+            # Should be at most: assets / <2-level-prefix> / icon.png = 4 parts
+            parts = Path(d).parts
+            assert len(parts) <= 4, (
+                f"Disambiguation should cap at 2 dir levels, got {len(parts)}: {d}"
+            )
 
     def test_multiple_clusters_independent_collisions(self):
         """Collisions in different clusters should be handled independently."""
@@ -933,6 +951,164 @@ class TestDedupeViaEmbeddings:
         emb = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]], dtype=np.float32)
         result = mod._dedupe_via_embeddings(files, emb)
         assert len(result) == 0, "Very different embeddings should not be flagged"
+
+
+# ===========================================================================
+#  Refine Dominant Clusters
+# ===========================================================================
+
+
+class TestRefineDominantClusters:
+    """_refine_dominant_clusters should sub-name large directories at depth-2."""
+
+    def test_dominant_folder_refined(self):
+        """When >40% of files map to one folder, depth-2 sub-names are used."""
+        files = [
+            {"path": "backups/pi_migration/a.txt"},
+            {"path": "backups/pi_migration/b.txt"},
+            {"path": "backups/website/c.txt"},
+            {"path": "backups/website/d.txt"},
+            {"path": "other/e.txt"},
+        ]
+        labels = np.array([0, 0, 1, 1, 2])
+        auto_names = {0: "backups", 1: "backups", 2: "other"}
+        refined = mod._refine_dominant_clusters(files, labels, auto_names, total_files=5)
+        # Clusters 0 and 1 had "backups" which covers 80% — should be refined
+        assert refined[0] == "backups/pi_migration"
+        assert refined[1] == "backups/website"
+        # Cluster 2 should be unchanged
+        assert refined[2] == "other"
+
+    def test_no_refinement_below_threshold(self):
+        """When no folder dominates, nothing changes."""
+        files = [
+            {"path": "alpha/a.txt"},
+            {"path": "alpha/b.txt"},
+            {"path": "beta/c.txt"},
+            {"path": "beta/d.txt"},
+            {"path": "gamma/e.txt"},
+        ]
+        labels = np.array([0, 0, 1, 1, 2])
+        auto_names = {0: "alpha", 1: "beta", 2: "gamma"}
+        refined = mod._refine_dominant_clusters(files, labels, auto_names, total_files=5)
+        assert refined == auto_names
+
+    def test_shallow_files_deferred_to_llm(self):
+        """When depth-2 can't help (files too shallow), cluster deferred to LLM."""
+        files = [
+            {"path": "backups/a.txt"},  # only 1 level deep
+            {"path": "backups/b.txt"},
+            {"path": "backups/c.txt"},
+            {"path": "other/d.txt"},
+        ]
+        labels = np.array([0, 0, 0, 1])
+        auto_names = {0: "backups", 1: "other"}
+        refined = mod._refine_dominant_clusters(files, labels, auto_names, total_files=4)
+        # Cluster 0 can't be refined (files are backups/x.txt, no 2nd level)
+        assert 0 not in refined, "Shallow files should be deferred to LLM"
+        assert refined[1] == "other"
+
+    def test_empty_auto_names(self):
+        """Empty auto_names should be handled gracefully."""
+        result = mod._refine_dominant_clusters([], np.array([]), {}, total_files=0)
+        assert result == {}
+
+
+# ===========================================================================
+#  Single-dict wrapping in _call_llm_for_list
+# ===========================================================================
+
+
+class TestCallLlmForListDictWrapping:
+    """_call_llm_for_list should wrap a single dict in a list."""
+
+    def test_single_rename_dict_wrapped(self):
+        """A bare dict like {from, to, reason} should be wrapped in a list."""
+        import unittest.mock as mock
+
+        single_dict = '{"from": "old.txt", "to": "new.txt", "reason": "descriptive"}'
+        with mock.patch.object(mod, "call_llm", return_value=single_dict):
+            result = mod._call_llm_for_list("test prompt", label="rename")
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0]["from"] == "old.txt"
+
+    def test_proper_list_returned_directly(self):
+        """A proper list should be returned as-is."""
+        import unittest.mock as mock
+
+        proper_list = '[{"from": "a.txt", "to": "b.txt"}]'
+        with mock.patch.object(mod, "call_llm", return_value=proper_list):
+            result = mod._call_llm_for_list("test prompt", label="rename")
+        assert isinstance(result, list)
+        assert len(result) == 1
+
+    def test_dict_with_known_key_unwrapped(self):
+        """A dict wrapping like {files: [...]} should unwrap the list."""
+        import unittest.mock as mock
+
+        wrapped = '{"files": [{"name": "a.txt"}, {"name": "b.txt"}]}'
+        with mock.patch.object(mod, "call_llm", return_value=wrapped):
+            result = mod._call_llm_for_list("test prompt", label="classify")
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+
+# ===========================================================================
+#  Embedding Cache (_load_cached_embeddings / embed_files with cache)
+# ===========================================================================
+
+
+class TestEmbeddingCache:
+    """Tests for the SQLite DB embedding cache in embed_files."""
+
+    def test_load_cached_embeddings_no_db(self):
+        """When DB doesn't exist, returns None."""
+        import unittest.mock as mock
+        with mock.patch.object(mod, "SEARCH_DB_PATH", Path("/nonexistent/vectors.db")):
+            result = mod._load_cached_embeddings("/some/dir")
+        assert result is None
+
+    def test_embed_files_without_cache(self):
+        """embed_files with no directory still works (pure API path)."""
+        import unittest.mock as mock
+
+        fake_embedding = [0.1, 0.2, 0.3]
+        fake_resp = mock.MagicMock()
+        fake_resp.json.return_value = {"embedding": fake_embedding}
+        fake_resp.raise_for_status = mock.MagicMock()
+
+        files = [{"path": "a.txt", "snippet": "hello"}]
+        with mock.patch("requests.post", return_value=fake_resp):
+            result = mod.embed_files(files)
+        assert result.shape == (1, 3)
+        np.testing.assert_allclose(result[0], fake_embedding)
+
+    def test_embed_files_uses_cache_when_available(self):
+        """When cache has a hit, that file skips the API call."""
+        import unittest.mock as mock
+
+        cached_vec = [0.5, 0.6, 0.7]
+        api_vec = [0.1, 0.2, 0.3]
+
+        fake_cache = {"a.txt": cached_vec}
+        fake_resp = mock.MagicMock()
+        fake_resp.json.return_value = {"embedding": api_vec}
+        fake_resp.raise_for_status = mock.MagicMock()
+
+        files = [
+            {"path": "a.txt", "snippet": "cached"},
+            {"path": "b.txt", "snippet": "not cached"},
+        ]
+
+        with mock.patch.object(mod, "_load_cached_embeddings", return_value=fake_cache):
+            with mock.patch("requests.post", return_value=fake_resp) as mock_post:
+                result = mod.embed_files(files, directory="/some/dir")
+
+        # a.txt should use cached vec, b.txt should call API
+        assert mock_post.call_count == 1  # only b.txt
+        np.testing.assert_allclose(result[0], cached_vec)
+        np.testing.assert_allclose(result[1], api_vec)
 
 
 # ===========================================================================

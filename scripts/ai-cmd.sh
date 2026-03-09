@@ -93,7 +93,7 @@ payload = {
 print(json.dumps(payload))
 " >"$PAYLOAD_FILE"
 
-gum spin --spinner dot --title "󰚩  Generating command with $MODEL..." -- \
+gum spin --title "󰚩  Generating command with $MODEL..." -- \
   sh -c 'curl -s http://localhost:11434/api/generate \
     -H "Content-Type: application/json" \
     -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
@@ -144,7 +144,8 @@ ACTION=$(gum choose \
 
 case "$ACTION" in
 "  Run it")
-  if gum confirm "$(printf 'Run: %s' "$CMD")"; then
+  if gum confirm "$(printf 'Run: %s' "$CMD")" \
+    --affirmative "Run it" --negative "Cancel"; then
     echo ""
     eval "$CMD"
   else
@@ -168,7 +169,8 @@ case "$ACTION" in
       --border rounded --padding "1 2" \
       "$(printf '󰆍  %s' "$EDITED")"
     echo ""
-    if gum confirm "$(printf 'Run: %s' "$EDITED")"; then
+    if gum confirm "$(printf 'Run: %s' "$EDITED")" \
+      --affirmative "Run it" --negative "Cancel"; then
       echo ""
       eval "$EDITED"
     else

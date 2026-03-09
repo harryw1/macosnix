@@ -80,7 +80,7 @@ trap 'rm -f "$RESULT_FILE"' EXIT
 
 export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL
 
-gum spin --spinner dot --title "󰚩  Searching and generating with $CHAT_MODEL..." -- \
+gum spin --title "󰚩  Searching and generating with $CHAT_MODEL..." -- \
   sh -c 'OLLAMA_MODEL="$CHAT_MODEL" \
     OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
     uv run "$PY_SCRIPT" --chat "$QUERY" --scope "$SCOPE" > "$RESULT_FILE" 2>/dev/null'
@@ -109,14 +109,7 @@ fi
 
 # ── Display answer ─────────────────────────────────────────────────────────────
 echo ""
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then TERM_WIDTH=80; fi
-[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
-
-gum style \
-  --width "$TERM_WIDTH" \
-  --border rounded --padding "1 2" \
-  "$ANSWER"
+printf '%s\n' "$ANSWER" | gum format
 echo ""
 
 # ── Display sources ────────────────────────────────────────────────────────────
