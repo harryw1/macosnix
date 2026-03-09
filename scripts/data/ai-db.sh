@@ -85,13 +85,17 @@ fi
 
 show_status() {
   local status_json
-  status_json=$(python3 "$PY_SCRIPT" status 2>/dev/null)
+  status_json=$(python3 "$PY_SCRIPT" status 2>&1) || {
+    gum style --foreground 196 " Failed to query database status"
+    gum style --foreground 245 "  Error: $status_json"
+    return 1
+  }
 
   local files chunks size fts
-  files=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['files_indexed'])")
-  chunks=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['total_chunks'])")
-  size=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['size_mb'])")
-  fts=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['fts_rows'])")
+  files=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['files_indexed'])") || files="?"
+  chunks=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['total_chunks'])") || chunks="?"
+  size=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['size_mb'])") || size="?"
+  fts=$(echo "$status_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['fts_rows'])") || fts="?"
 
   gum style --border rounded --padding "0 2" --border-foreground 212 \
     "󰚩 Embeddings Database" \
@@ -103,7 +107,10 @@ show_status() {
 
 show_file_types() {
   local status_json
-  status_json=$(python3 "$PY_SCRIPT" status 2>/dev/null)
+  status_json=$(python3 "$PY_SCRIPT" status 2>&1) || {
+    gum style --foreground 196 "  Failed to load file type data."
+    return 1
+  }
 
   echo "$status_json" | python3 -c "
 import json, sys
@@ -128,7 +135,10 @@ else:
 
 browse_files() {
   local file_list
-  file_list=$(python3 "$PY_SCRIPT" files 2>/dev/null)
+  file_list=$(python3 "$PY_SCRIPT" files 2>&1) || {
+    gum style --foreground 196 "  Failed to list files: $file_list"
+    return
+  }
 
   if [ -z "$file_list" ]; then
     gum style --foreground 196 "  No files indexed."
@@ -158,7 +168,10 @@ browse_files() {
 inspect_file() {
   local filepath="$1"
   local chunks_json
-  chunks_json=$(python3 "$PY_SCRIPT" chunks "$filepath" 2>/dev/null)
+  chunks_json=$(python3 "$PY_SCRIPT" chunks "$filepath" 2>&1) || {
+    gum style --foreground 196 "  Failed to load chunks for: $filepath"
+    return
+  }
 
   local num_chunks
   num_chunks=$(echo "$chunks_json" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
@@ -394,7 +407,7 @@ analytics_menu() {
 main() {
   while true; do
     clear
-    show_status
+    show_status || true
     echo ""
 
     local choice

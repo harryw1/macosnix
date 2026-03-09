@@ -116,9 +116,9 @@ fi
 section "Configuration"
 
 # Verify config.py returns expected defaults
-CHAT_MODEL=$(python3 "$SCRIPT_DIR/lib/config.py" models chat "MISSING" 2>/dev/null)
-EMBED_MODEL=$(python3 "$SCRIPT_DIR/lib/config.py" models embed "MISSING" 2>/dev/null)
-REASON_MODEL=$(python3 "$SCRIPT_DIR/lib/config.py" models reasoning "MISSING" 2>/dev/null)
+CHAT_MODEL=$(python3 "$SCRIPT_DIR/lib/config.py" models chat "MISSING" 2>/dev/null) || CHAT_MODEL="MISSING"
+EMBED_MODEL=$(python3 "$SCRIPT_DIR/lib/config.py" models embed "MISSING" 2>/dev/null) || EMBED_MODEL="MISSING"
+REASON_MODEL=$(python3 "$SCRIPT_DIR/lib/config.py" models reasoning "MISSING" 2>/dev/null) || REASON_MODEL="MISSING"
 
 if [ "$CHAT_MODEL" != "MISSING" ]; then
   pass "models.chat = $CHAT_MODEL"
@@ -139,7 +139,7 @@ else
 fi
 
 # Verify env-var override works
-OVERRIDE_RESULT=$(OLLAMA_MODEL="test-override" python3 "$SCRIPT_DIR/lib/config.py" models chat "MISSING" 2>/dev/null)
+OVERRIDE_RESULT=$(OLLAMA_MODEL="test-override" python3 "$SCRIPT_DIR/lib/config.py" models chat "MISSING" 2>/dev/null) || OVERRIDE_RESULT="MISSING"
 if [ "$OVERRIDE_RESULT" = "test-override" ]; then
   pass "env-var override (OLLAMA_MODEL) works"
 else
