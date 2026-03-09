@@ -28,4 +28,8 @@
   programs.lazygit = {
     enable = true;
   };
+
+  programs.btop = {
+    enable = true;
+  };
 }

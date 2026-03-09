@@ -32,7 +32,6 @@
     typos        # Fast spellchecker
     nmap
     fastfetch
-    btop
     ruff         # Python linter/formatter
     jq
 
