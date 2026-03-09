@@ -174,7 +174,10 @@ $DO_ALL_FILES && SCAN_FLAGS="$SCAN_FLAGS --all-files"
 gum spin --title "Scanning files…" -- \
   bash -c "uv run \"$PY_SCRIPT\" --scan \"$TARGET_DIR\" $SCAN_FLAGS > \"$SCAN_FILE\""
 
-FILE_COUNT=$(python3 -c "import json; print(len(json.load(open('$SCAN_FILE'))))")
+FILE_COUNT=$(python3 -c "import json; print(len(json.load(open('$SCAN_FILE'))))" 2>/dev/null) || {
+  gum style --foreground 196 "  Failed to read scan results."
+  exit 1
+}
 echo "  Found $FILE_COUNT file(s)."
 echo ""
 
@@ -424,7 +427,7 @@ import json, os
 with open(os.environ['PLAN_FILE']) as f:
     plan = json.load(f)
 print(sum(1 for o in plan.get('operations',[]) if o.get('op') == 'duplicate'))
-")
+") || DUPE_COUNT=0
 
 if [[ "$DUPE_COUNT" -gt 0 ]]; then
   echo ""

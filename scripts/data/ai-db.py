@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "sqlite-vec",
+# ]
+# ///
 """ai-db.py — Database management backend for the ai-db TUI.
 
 Provides subcommands for inspecting, browsing, searching, and maintaining

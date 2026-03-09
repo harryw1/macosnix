@@ -26,6 +26,11 @@ if ! command -v gum >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Error: uv is required.  Install: brew install uv" >&2
+  exit 1
+fi
+
 if [ ! -f "$DB_PATH" ]; then
   gum style --foreground 196 " No database found at $DB_PATH"
   gum style --foreground 245 "  Run: ai-search --index <directory>  to create one."
@@ -51,7 +56,7 @@ HELP
 fi
 
 if [[ "${1:-}" == "--status" ]]; then
-  python3 "$PY_SCRIPT" status | python3 -c "
+  uv run "$PY_SCRIPT" status | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 print(f\"  Database:  {d['db_path']}\")
@@ -66,18 +71,18 @@ if d.get('feedback_chunks'):
 fi
 
 if [[ "${1:-}" == "--orphans" ]]; then
-  python3 "$PY_SCRIPT" orphans
+  uv run "$PY_SCRIPT" orphans
   exit 0
 fi
 
 if [[ "${1:-}" == "--vacuum" ]]; then
-  gum spin --title "Vacuuming database..." -- python3 "$PY_SCRIPT" vacuum
+  gum spin --title "Vacuuming database..." -- uv run "$PY_SCRIPT" vacuum
   gum style --foreground 212 " Database vacuumed."
   exit 0
 fi
 
 if [[ "${1:-}" == "--stale" ]]; then
-  python3 "$PY_SCRIPT" stale
+  uv run "$PY_SCRIPT" stale
   exit 0
 fi
 
@@ -85,7 +90,7 @@ fi
 
 show_status() {
   local status_json
-  status_json=$(python3 "$PY_SCRIPT" status 2>&1) || {
+  status_json=$(uv run "$PY_SCRIPT" status 2>&1) || {
     gum style --foreground 196 " Failed to query database status"
     gum style --foreground 245 "  Error: $status_json"
     return 1
@@ -107,7 +112,7 @@ show_status() {
 
 show_file_types() {
   local status_json
-  status_json=$(python3 "$PY_SCRIPT" status 2>&1) || {
+  status_json=$(uv run "$PY_SCRIPT" status 2>&1) || {
     gum style --foreground 196 "  Failed to load file type data."
     return 1
   }
@@ -135,7 +140,7 @@ else:
 
 browse_files() {
   local file_list
-  file_list=$(python3 "$PY_SCRIPT" files 2>&1) || {
+  file_list=$(uv run "$PY_SCRIPT" files 2>&1) || {
     gum style --foreground 196 "  Failed to list files: $file_list"
     return
   }
@@ -168,7 +173,7 @@ browse_files() {
 inspect_file() {
   local filepath="$1"
   local chunks_json
-  chunks_json=$(python3 "$PY_SCRIPT" chunks "$filepath" 2>&1) || {
+  chunks_json=$(uv run "$PY_SCRIPT" chunks "$filepath" 2>&1) || {
     gum style --foreground 196 "  Failed to load chunks for: $filepath"
     return
   }
@@ -206,7 +211,7 @@ for i, c in enumerate(chunks, 1):
     "Delete all chunks for this file")
       if gum confirm "Delete all $num_chunks chunk(s) for this file?"; then
         local result
-        result=$(python3 "$PY_SCRIPT" delete "$filepath" 2>/dev/null)
+        result=$(uv run "$PY_SCRIPT" delete "$filepath" 2>/dev/null)
         gum style --foreground 212 "  Deleted: $result"
       fi
       ;;
@@ -274,7 +279,7 @@ manage_orphans() {
   if echo "$orphans" | grep -q "orphaned file"; then
     if gum confirm "Remove all orphaned entries from the database?"; then
       local result
-      result=$(python3 "$PY_SCRIPT" delete-orphans 2>/dev/null)
+      result=$(uv run "$PY_SCRIPT" delete-orphans 2>/dev/null)
       gum style --foreground 212 "  $result"
     fi
   fi
@@ -325,7 +330,7 @@ maintenance_menu() {
 
   case "$action" in
     "Vacuum (compact + integrity check)")
-      gum spin --title "Vacuuming..." -- python3 "$PY_SCRIPT" vacuum > /tmp/ai-db-vacuum.txt 2>/dev/null
+      gum spin --title "Vacuuming..." -- uv run "$PY_SCRIPT" vacuum > /tmp/ai-db-vacuum.txt 2>/dev/null
       local result
       result=$(cat /tmp/ai-db-vacuum.txt)
       rm -f /tmp/ai-db-vacuum.txt
@@ -339,7 +344,7 @@ print(f\"  Saved:      {d['saved_kb']} KB\")
 "
       ;;
     "Rebuild FTS5 index")
-      gum spin --title "Rebuilding FTS5 index..." -- python3 "$PY_SCRIPT" fts-rebuild > /tmp/ai-db-fts.txt 2>/dev/null
+      gum spin --title "Rebuilding FTS5 index..." -- uv run "$PY_SCRIPT" fts-rebuild > /tmp/ai-db-fts.txt 2>/dev/null
       local fts_result
       fts_result=$(cat /tmp/ai-db-fts.txt)
       rm -f /tmp/ai-db-fts.txt
@@ -386,7 +391,7 @@ analytics_menu() {
       echo ""
       gum style --bold --foreground 39 "Top Files by Chunk Count"
       echo ""
-      python3 "$PY_SCRIPT" top-files
+      uv run "$PY_SCRIPT" top-files
       echo ""
       gum input --header "Press Enter to continue..." --placeholder "" >/dev/null 2>&1 || true
       ;;
@@ -394,7 +399,7 @@ analytics_menu() {
       echo ""
       gum style --bold --foreground 39 "Top Chunks by Utility (Feedback Learning)"
       echo ""
-      python3 "$PY_SCRIPT" top-utility
+      uv run "$PY_SCRIPT" top-utility
       echo ""
       gum input --header "Press Enter to continue..." --placeholder "" >/dev/null 2>&1 || true
       ;;

@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "sqlite-vec",
+#     "requests",
+# ]
+# ///
 """pipeline_post — Post-generation pipeline for bash-based ai-* tools.
 
 Called after generation to run verification and feedback logging for tools

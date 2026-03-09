@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "numpy",
+#     "pytest",
+# ]
+# ///
 """Tests for ai-organize's statistical and heuristic functions.
 
 These tests exercise the pure-math and pure-logic functions that don't

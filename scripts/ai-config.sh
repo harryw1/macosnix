@@ -85,7 +85,10 @@ ensure_ollama
 # ── Query installed models ───────────────────────────────────────────────────
 
 echo "Fetching installed models from Ollama..."
-MODELS_JSON=$(curl -s http://localhost:11434/api/tags)
+MODELS_JSON=$(curl -s http://localhost:11434/api/tags) || {
+  gum style --foreground 196 " Failed to reach Ollama at localhost:11434"
+  exit 1
+}
 
 # Extract model names using Python (handles JSON properly)
 ALL_MODELS=$(echo "$MODELS_JSON" | python3 -c "
@@ -104,7 +107,7 @@ for m in sorted(models, key=lambda x: x['name']):
         parts.append(f'[{family}]')
     parts.append(f'{size_gb:.1f}GB')
     print(' '.join(parts))
-")
+") || ALL_MODELS=""
 
 # Also get just the names for selection
 MODEL_NAMES=$(echo "$MODELS_JSON" | python3 -c "
@@ -112,7 +115,7 @@ import json, sys
 data = json.load(sys.stdin)
 for m in sorted(data.get('models', []), key=lambda x: x['name']):
     print(m['name'])
-")
+") || MODEL_NAMES=""
 
 if [ -z "$MODEL_NAMES" ]; then
   gum style --foreground 196 " No models found! Pull some models first:"
@@ -236,7 +239,7 @@ echo ""
 
 if gum confirm "Save this configuration?"; then
   # Write via Python config module for proper formatting
-  LIB_DIR="$SCRIPT_DIR/lib"
+  LIB_DIR="${AI_LIB_PATH:-$SCRIPT_DIR/lib}"
   CHAT_MODEL="$CHAT_MODEL" EMBED_MODEL="$EMBED_MODEL" REASON_MODEL="$REASON_MODEL" \
   TOPK="$TOPK" THRESHOLD="$THRESHOLD" DUPE_THRESHOLD="$DUPE_THRESHOLD" \
   python3 -c "

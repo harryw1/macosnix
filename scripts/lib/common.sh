@@ -137,7 +137,10 @@ payload = {
     }
 }
 print(json.dumps(payload))
-" >"$payload_file"
+" >"$payload_file" || {
+    echo " Failed to build request payload" >&2
+    return 1
+  }
 
   # Call Ollama under a gum spinner
   PAYLOAD_FILE="$payload_file" MSG_FILE="$msg_file" \

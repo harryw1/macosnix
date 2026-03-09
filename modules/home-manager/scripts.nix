@@ -604,6 +604,11 @@ README
     exec bash "${../../scripts/ai-help.sh}" "$@"
   '';
 
+  ai-launcher = pkgs.writeShellScriptBin "ai" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
+    exec bash "${../../scripts/ai.sh}" "$@"
+  '';
+
   ollama-pull = pkgs.writeShellScriptBin "ollama-pull" ''
     #!/usr/bin/env bash
     # Pull models for Ollama
@@ -655,5 +660,6 @@ in
     ai-db
     ai-config
     ai-help
+    ai-launcher
   ];
 }
