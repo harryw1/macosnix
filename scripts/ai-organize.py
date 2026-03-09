@@ -7,6 +7,8 @@
 #     "pypdf",
 #     "python-docx",
 #     "openpyxl",
+#     "numpy",
+#     "scikit-learn",
 # ]
 # ///
 """ai-organize — AI-powered file reorganizer, renamer, and deduplicator.
@@ -36,6 +38,7 @@ import struct
 import sys
 from pathlib import Path
 
+import numpy as np
 import requests
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -43,7 +46,7 @@ import requests
 OLLAMA_URL       = "http://localhost:11434/api/generate"
 OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
 MODEL            = os.environ.get("OLLAMA_MODEL",       "qwen3.5:9b")
-EMBED_MODEL      = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:8b")
+EMBED_MODEL      = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:0.6b")
 
 XDG_DATA_HOME  = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
 SEARCH_DB_PATH = Path(XDG_DATA_HOME) / "ai-search" / "vectors.db"
@@ -56,6 +59,12 @@ SNIPPET_LEN = 400
 MAX_FILES_PER_BATCH = 40
 # Cosine-distance threshold for declaring two files "duplicates" via embeddings
 DUPE_THRESHOLD = 0.12
+# Maximum files per embedding batch (Ollama processes one at a time, but we
+# track progress in batches of this size).
+EMBED_BATCH_LOG = 100
+# Minimum files in a cluster for HDBSCAN to consider it a real group.
+# Smaller values produce more granular folders; larger values merge more.
+HDBSCAN_MIN_CLUSTER = 3
 
 TEXT_EXTS = {
     ".nix", ".md", ".toml", ".yml", ".yaml", ".sh", ".bash", ".zsh",
@@ -67,6 +76,13 @@ BINARY_EXTS = {".pdf", ".docx", ".xlsx"}
 IGNORE_DIRS  = {".git", "node_modules", "vendor", "__pycache__", ".venv",
                 "dist", "build", ".DS_Store", ".idea", ".vscode"}
 IGNORE_FILES = {".DS_Store", ".gitkeep", "Thumbs.db", ".localized"}
+
+# Folder names that almost always indicate the LLM punted instead of thinking.
+# Used both for post-filtering taxonomy output and for plan validation warnings.
+_GENERIC_FOLDER_NAMES = frozenset({
+    "backup", "backups", "archive", "archives", "old", "misc",
+    "miscellaneous", "other", "stuff", "temp", "tmp", "unsorted",
+})
 
 # ── Code-project awareness ─────────────────────────────────────────────────────
 # If any of these marker files exist at the root, we treat the directory as a
@@ -425,17 +441,18 @@ def extract_json(text: str) -> dict | list:
 #
 # Strategy
 # --------
-# Old approach: send every file with snippets to the LLM → O(N/40) calls,
-#               each requiring ~8 000 token output budget. Hits timeouts at scale.
+# Previous approach: LLM taxonomy (1 call) + LLM classify (N/150 calls)
+#   739 files → ~6 LLM calls.  Still O(N) LLM calls for large dirs.
 #
-# New approach:
-#   --organize / --flatten   Two-phase
-#     Phase 1 (1 call)     : send all file *paths* (no snippets) → folder taxonomy
-#     Phase 2 (N/150 calls): classify files into that taxonomy → compact output
-#   --rename                 Snippet-based, but pre-filtered to obvious candidates
-#     (1–2 calls for most dirs)
+# Current approach:  embed → cluster → name
+#   1. Embed all files with a small model (qwen3-embedding:0.6b, ~400 MB)
+#   2. Cluster embeddings with HDBSCAN (auto cluster count, no LLM)
+#   3. Name clusters via LLM (1 call)
+#   4. Assign files to clusters (deterministic, no LLM)
 #
-# Result: 739 files → ~6 LLM calls instead of 19.
+# Result: any directory size → 1 LLM call for organization.
+#   Rename and dedupe remain separate (1–2 LLM calls + embedding reuse).
+#   Legacy two-phase approach kept as fallback if HDBSCAN finds no clusters.
 
 # Maximum files per classification call (output is ~50 tokens/file: much smaller
 # than a full plan operation, so we can use much larger batches).
@@ -465,7 +482,229 @@ def is_rename_candidate(filename: str) -> bool:
     return any(pat.match(stem) for pat in _GENERIC_STEM_RE)
 
 
-# ── Phase 1: folder taxonomy ───────────────────────────────────────────────────
+# ── Embedding + Clustering Pipeline ───────────────────────────────────────────
+#
+# Instead of sending file lists to the LLM for taxonomy + classification
+# (O(N/150) calls), we embed each file's metadata with a small model,
+# cluster the vectors with HDBSCAN, then ask the LLM to *name* the
+# discovered clusters (1 call).  Files are assigned to clusters by the
+# algorithm — no LLM classification calls at all.
+
+
+def _file_embed_text(f: dict) -> str:
+    """Build the text representation of a file for embedding.
+
+    Combines the path (which carries directory-structure signal) with a
+    truncated content snippet so the embedding captures both location
+    context and semantic content.
+    """
+    snippet = f.get("snippet", "").replace("\n", " ").strip()[:250]
+    if snippet:
+        return f"{f['path']} — {snippet}"
+    return f["path"]
+
+
+def embed_files(files: list[dict]) -> np.ndarray:
+    """Embed every file's metadata via the Ollama embeddings endpoint.
+
+    Returns an (N, D) float32 numpy array where N = len(files) and D is
+    the embedding dimensionality of EMBED_MODEL.
+    """
+    vectors: list[list[float]] = []
+    total = len(files)
+
+    for i, f in enumerate(files):
+        if i % EMBED_BATCH_LOG == 0 and i > 0:
+            print(f"  Embedded {i}/{total} files…", file=sys.stderr)
+
+        text = _file_embed_text(f)
+        payload = {
+            "model":  EMBED_MODEL,
+            "prompt": text,
+            "keep_alive": -1,
+        }
+        try:
+            resp = requests.post(OLLAMA_EMBED_URL, json=payload, timeout=120)
+            resp.raise_for_status()
+            embedding = resp.json().get("embedding")
+            if embedding is None:
+                print(f"  Warning: no embedding returned for {f['path']}, using zeros.",
+                      file=sys.stderr)
+                # Use same dim as previous vectors, or a placeholder
+                dim = len(vectors[-1]) if vectors else 384
+                vectors.append([0.0] * dim)
+            else:
+                vectors.append(embedding)
+        except requests.exceptions.RequestException as e:
+            print(f"  Error embedding {f['path']}: {e}", file=sys.stderr)
+            dim = len(vectors[-1]) if vectors else 384
+            vectors.append([0.0] * dim)
+
+    print(f"  Embedded {total}/{total} files.", file=sys.stderr)
+    return np.array(vectors, dtype=np.float32)
+
+
+def cluster_files(embeddings: np.ndarray, min_cluster: int = HDBSCAN_MIN_CLUSTER) -> np.ndarray:
+    """Cluster file embeddings using HDBSCAN.
+
+    Returns an integer label array of length N.  Label -1 means the file
+    is noise (doesn't belong to any cluster).  HDBSCAN automatically
+    determines the number of clusters from the data density.
+    """
+    from sklearn.cluster import HDBSCAN
+    from sklearn.preprocessing import normalize
+
+    # L2-normalise so HDBSCAN's euclidean distance ≈ cosine distance
+    normed = normalize(embeddings, norm="l2")
+
+    clusterer = HDBSCAN(
+        min_cluster_size=min_cluster,
+        metric="euclidean",
+        # Let the library choose defaults for everything else
+    )
+    labels = clusterer.fit_predict(normed)
+    n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+    n_noise    = int(np.sum(labels == -1))
+    print(f"  HDBSCAN found {n_clusters} cluster(s), {n_noise} noise file(s).",
+          file=sys.stderr)
+    return labels
+
+
+def name_clusters(
+    files: list[dict],
+    labels: np.ndarray,
+    root: str,
+    flatten: bool = False,
+) -> dict[int, str]:
+    """One LLM call: name each cluster based on representative file paths.
+
+    For each cluster, we pick up to 15 representative files and ask the LLM
+    to assign a descriptive folder name.  Returns a mapping from cluster
+    label → folder name string.
+    """
+    unique_labels = sorted(set(labels))
+    cluster_labels = [l for l in unique_labels if l != -1]
+
+    # Build representative samples per cluster
+    cluster_descriptions: list[str] = []
+    for label in cluster_labels:
+        indices = np.where(labels == label)[0]
+        # Pick up to 15 representative files — evenly spaced through the cluster
+        if len(indices) > 15:
+            step = len(indices) // 15
+            sample_indices = indices[::step][:15]
+        else:
+            sample_indices = indices
+        paths = [files[i]["path"] for i in sample_indices]
+        cluster_descriptions.append(
+            f"CLUSTER {label} ({len(indices)} files):\n" +
+            "\n".join(f"  {p}" for p in paths)
+        )
+
+    clusters_text = "\n\n".join(cluster_descriptions)
+
+    # Existing top-level dirs for context
+    existing_top_dirs = sorted({
+        f["path"].split("/")[0]
+        for f in files
+        if "/" in f["path"]
+    })
+    existing_ctx = ""
+    if existing_top_dirs:
+        existing_ctx = (
+            "\n\nEXISTING TOP-LEVEL DIRECTORIES (preserve meaningful names):\n"
+            + "\n".join(f"  {d}/" for d in existing_top_dirs)
+        )
+
+    depth_rule = "Maximum 1 level of depth (no sub-folders)" if flatten else "Maximum 2 levels of depth"
+    count_rule = "3 to 10 folders total" if flatten else "5 to 15 folders total"
+
+    prompt = f"""You are naming folder categories for an automatic file organizer working in: {root}
+
+Below are clusters of files that have been grouped by content similarity.
+Assign each cluster a descriptive folder name.
+
+RULES:
+- {count_rule}
+- {depth_rule}
+- Lowercase kebab-case names
+- Name folders after actual content themes (avoid "misc", "other", "files")
+- PRESERVE existing meaningful directory names where they match a cluster's content
+- Multiple clusters CAN share a folder name if they are thematically similar
+{existing_ctx}
+
+{clusters_text}
+
+Output ONLY a JSON object mapping cluster number to folder name.
+Example: {{"0": "reports", "1": "data/raw", "2": "notebooks"}}
+
+JSON:"""
+
+    raw = call_llm(prompt)
+    try:
+        result = extract_json(raw)
+        if isinstance(result, dict):
+            # Normalise keys to int and values to cleaned strings
+            mapping: dict[int, str] = {}
+            existing_lower = {d.lower() for d in existing_top_dirs} if existing_top_dirs else set()
+            generic_stems = {n.rstrip("s") for n in _GENERIC_FOLDER_NAMES}
+
+            for k, v in result.items():
+                label = int(k)
+                folder = str(v).strip().rstrip("/")
+                root_part = Path(folder).parts[0].lower() if folder else ""
+                is_generic = root_part.rstrip("s") in generic_stems
+                already_exists = root_part in existing_lower
+                if is_generic and not already_exists:
+                    print(
+                        f"  Rejected generic name '{folder}' for cluster {label} — "
+                        "files will keep current paths.",
+                        file=sys.stderr,
+                    )
+                    continue
+                mapping[label] = folder
+            return mapping
+    except (ValueError, KeyError) as e:
+        print(f"  Warning: could not parse cluster naming response: {e}", file=sys.stderr)
+    return {}
+
+
+def assign_files_to_clusters(
+    files: list[dict],
+    labels: np.ndarray,
+    cluster_names: dict[int, str],
+) -> list[dict]:
+    """Map each file to its cluster's folder.  No LLM calls needed.
+
+    Files labelled as noise (-1) or whose cluster wasn't named are left
+    in place (no move operation generated).
+    """
+    ops: list[dict] = []
+    seen_mkdirs: set[str] = set()
+
+    for i, f in enumerate(files):
+        label = int(labels[i])
+        folder = cluster_names.get(label)
+        if folder is None:
+            continue  # noise or unnamed cluster — leave in place
+
+        src = f["path"]
+        dst = f"{folder}/{Path(src).name}"
+        if src == dst:
+            continue
+
+        if folder not in seen_mkdirs:
+            ops.append({"op": "mkdir", "path": folder})
+            seen_mkdirs.add(folder)
+        ops.append({
+            "op": "move", "from": src, "to": dst,
+            "reason": f"Organized into {folder}",
+        })
+
+    return ops
+
+
+# ── Phase 1: folder taxonomy (legacy — kept for fallback) ─────────────────────
 
 def plan_folder_taxonomy(files: list[dict], root: str, flatten: bool = False) -> list[str]:
     """One LLM call: derive a folder structure from file paths alone (no snippets).
@@ -545,9 +784,88 @@ JSON:"""
     try:
         result = extract_json(raw)
         if isinstance(result, list):
-            return [str(f).strip().rstrip("/") for f in result if isinstance(f, str) and f.strip()]
+            folders = [str(f).strip().rstrip("/") for f in result if isinstance(f, str) and f.strip()]
+            # Post-filter: reject purely generic folder names that the LLM
+            # *invented*.  If the name already exists as a top-level directory
+            # in the file tree it's legitimate and should be kept.
+            existing_lower = {d.lower() for d in existing_top_dirs} if existing_top_dirs else set()
+            generic_stems  = {n.rstrip("s") for n in _GENERIC_FOLDER_NAMES}
+
+            filtered: list[str] = []
+            for folder in folders:
+                root_part = Path(folder).parts[0].lower() if folder else ""
+                is_generic = root_part.rstrip("s") in generic_stems
+                already_exists = root_part in existing_lower
+                if is_generic and not already_exists:
+                    print(
+                        f"  Rejected LLM-invented generic folder '{folder}' — "
+                        "files will keep their current paths.",
+                        file=sys.stderr,
+                    )
+                else:
+                    filtered.append(folder)
+            return filtered
     except (ValueError, KeyError):
         pass
+    return []
+
+
+# ── Robust LLM list helper ────────────────────────────────────────────────────
+
+def _call_llm_for_list(
+    prompt: str,
+    label: str = "LLM call",
+    max_retries: int = 1,
+) -> list:
+    """Call the LLM expecting a JSON array response.  Handles:
+    - Dict wrappers: if the LLM returns {"files": [...]} or {"results": [...]},
+      unwrap to the inner list automatically.
+    - Retry: on parse failure, retry up to *max_retries* times.
+    - Diagnostics: log a preview of the raw response on failure.
+    """
+    for attempt in range(1 + max_retries):
+        raw = call_llm(prompt)
+        try:
+            parsed = extract_json(raw)
+        except (ValueError, KeyError):
+            preview = raw[:200].replace("\n", " ")
+            print(
+                f"  Warning: could not parse {label} (attempt {attempt + 1}). "
+                f"Raw preview: {preview!r}",
+                file=sys.stderr,
+            )
+            continue
+
+        # Happy path: already a list
+        if isinstance(parsed, list):
+            return parsed
+
+        # Common LLM quirk: wraps the array in a dict like {"files": [...]}
+        if isinstance(parsed, dict):
+            for key in ("files", "results", "data", "assignments", "items"):
+                if isinstance(parsed.get(key), list):
+                    print(
+                        f"  Note: {label} returned a dict wrapper (key={key!r}), unwrapping.",
+                        file=sys.stderr,
+                    )
+                    return parsed[key]
+            # Last resort: if there's exactly one list value, use it
+            lists = [v for v in parsed.values() if isinstance(v, list)]
+            if len(lists) == 1:
+                print(
+                    f"  Note: {label} returned a dict wrapper, unwrapping single list value.",
+                    file=sys.stderr,
+                )
+                return lists[0]
+
+        preview = str(parsed)[:200]
+        print(
+            f"  Warning: unexpected {type(parsed).__name__} for {label} "
+            f"(attempt {attempt + 1}). Preview: {preview!r}",
+            file=sys.stderr,
+        )
+
+    print(f"  Error: {label} failed after {1 + max_retries} attempt(s), skipping.", file=sys.stderr)
     return []
 
 
@@ -585,15 +903,7 @@ RULES:
 
 JSON: [{{"file": "original/path.ext", "folder": "target/folder"}}, ...]"""
 
-        raw = call_llm(prompt)
-        try:
-            assignments = extract_json(raw)
-            if not isinstance(assignments, list):
-                print(f"  Warning: unexpected response for classify batch {n}, skipping.", file=sys.stderr)
-                continue
-        except (ValueError, KeyError):
-            print(f"  Warning: could not parse classify batch {n}, skipping.", file=sys.stderr)
-            continue
+        assignments = _call_llm_for_list(prompt, label=f"classify batch {n}")
 
         seen_mkdirs: set[str] = set()
         for a in assignments:
@@ -656,14 +966,7 @@ SCHEMA: {_RENAME_SCHEMA}
 
 JSON:"""
 
-        raw = call_llm(prompt)
-        try:
-            renames = extract_json(raw)
-            if not isinstance(renames, list):
-                continue
-        except (ValueError, KeyError):
-            print(f"  Warning: could not parse rename batch {n}, skipping.", file=sys.stderr)
-            continue
+        renames = _call_llm_for_list(prompt, label=f"rename batch {n}")
 
         for r in renames:
             if not isinstance(r, dict):
@@ -690,36 +993,66 @@ def generate_plan(
     do_rename: bool,
     do_organize: bool,
     do_flatten: bool,
-) -> dict:
-    """Dispatch to the most efficient strategy for the requested operations."""
-    all_ops:   list[dict] = []
-    summaries: list[str]  = []
+    do_dedupe: bool = False,
+) -> tuple[dict, np.ndarray | None]:
+    """Dispatch to the most efficient strategy for the requested operations.
 
-    # ── Organize / Flatten: two-phase ─────────────────────────────────────────
+    Returns (plan_dict, embeddings_or_None).  The embeddings are returned
+    so callers can reuse them for deduplication without re-embedding.
+    """
+    all_ops:    list[dict]    = []
+    summaries:  list[str]     = []
+    embeddings: np.ndarray | None = None
+
+    # ── Organize / Flatten: embed → cluster → name ────────────────────────────
     if do_organize or do_flatten:
-        print(f"  Phase 1: deriving folder structure from {len(files)} paths…",
-              file=sys.stderr)
-
         if do_flatten:
             deep = sum(1 for f in files if f["path"].count("/") > 1)
             if deep:
                 print(f"  {deep} deeply-nested file(s) will be flattened.", file=sys.stderr)
 
-        folders = plan_folder_taxonomy(files, directory, flatten=do_flatten)
+        # Step 1: Embed all files with the small embedding model
+        print(f"  Embedding {len(files)} files with {EMBED_MODEL}…", file=sys.stderr)
+        embeddings = embed_files(files)
 
-        if not folders:
-            print("  Warning: no folder structure proposed, skipping organize step.",
+        # Step 2: Cluster with HDBSCAN (automatic cluster count)
+        print("  Clustering embeddings with HDBSCAN…", file=sys.stderr)
+        labels = cluster_files(embeddings)
+
+        # Step 3: Name the clusters with one LLM call
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        if n_clusters == 0:
+            print("  Warning: HDBSCAN found no clusters, falling back to LLM taxonomy.",
                   file=sys.stderr)
+            # Fallback to legacy two-phase approach
+            folders = plan_folder_taxonomy(files, directory, flatten=do_flatten)
+            if folders:
+                preview = ", ".join(folders[:6]) + ("…" if len(folders) > 6 else "")
+                verb = "Flattened" if do_flatten else "Organized"
+                print(f"  Proposed {len(folders)} folder(s): {preview}", file=sys.stderr)
+                ops = classify_files_to_folders(files, folders, directory)
+                all_ops.extend(ops)
+                n_moves = sum(1 for o in ops if o.get("op") == "move")
+                summaries.append(f"{verb} {n_moves} file(s) into {len(folders)} folder(s).")
         else:
-            preview = ", ".join(folders[:6]) + ("…" if len(folders) > 6 else "")
-            verb = "Flattened" if do_flatten else "Organized"
-            print(f"  Proposed {len(folders)} folder(s): {preview}", file=sys.stderr)
-            print(f"  Phase 2: classifying {len(files)} file(s)…", file=sys.stderr)
+            print(f"  Naming {n_clusters} cluster(s) via LLM…", file=sys.stderr)
+            cluster_names = name_clusters(files, labels, directory, flatten=do_flatten)
 
-            ops = classify_files_to_folders(files, folders, directory)
-            all_ops.extend(ops)
-            n_moves = sum(1 for o in ops if o.get("op") == "move")
-            summaries.append(f"{verb} {n_moves} file(s) into {len(folders)} folder(s).")
+            if not cluster_names:
+                print("  Warning: cluster naming failed, skipping organize step.",
+                      file=sys.stderr)
+            else:
+                preview = ", ".join(list(cluster_names.values())[:6])
+                if len(cluster_names) > 6:
+                    preview += "…"
+                verb = "Flattened" if do_flatten else "Organized"
+                print(f"  Named {len(cluster_names)} folder(s): {preview}", file=sys.stderr)
+
+                # Step 4: Assign files to clusters (no LLM needed)
+                ops = assign_files_to_clusters(files, labels, cluster_names)
+                all_ops.extend(ops)
+                n_moves = sum(1 for o in ops if o.get("op") == "move")
+                summaries.append(f"{verb} {n_moves} file(s) into {len(cluster_names)} folder(s).")
 
     # ── Rename: pre-filtered snippet pass ─────────────────────────────────────
     # Build a path map from organize/flatten ops so rename operates on
@@ -761,7 +1094,7 @@ def generate_plan(
         else:
             deduped.append(op)
 
-    return {"operations": deduped, "summary": " ".join(s for s in summaries if s)}
+    return {"operations": deduped, "summary": " ".join(s for s in summaries if s)}, embeddings
 
 
 # ── Deduplication ──────────────────────────────────────────────────────────────
@@ -950,23 +1283,92 @@ JSON output:"""
         return []
 
 
-def find_duplicates(directory: str, files: list[dict]) -> list[dict]:
-    """Find duplicate files: tries the ai-search DB first, then falls back to LLM."""
+def _dedupe_via_embeddings(
+    files: list[dict],
+    embeddings: np.ndarray,
+) -> list[dict]:
+    """Find duplicates using fresh embeddings from the organize step.
+
+    Uses the same cosine-distance threshold as the DB path, but operates
+    directly on the in-memory embedding matrix — no database required.
+    """
+    from sklearn.preprocessing import normalize
+
+    normed = normalize(embeddings, norm="l2")
+    n = len(files)
+
+    # Compute pairwise cosine distances only for nearby vectors.
+    # For efficiency with large N, we use sklearn's NearestNeighbors
+    # with a radius query instead of computing the full N×N matrix.
+    from sklearn.neighbors import NearestNeighbors
+
+    nn = NearestNeighbors(
+        metric="euclidean",
+        n_neighbors=min(n, 20),
+        algorithm="auto",
+    )
+    nn.fit(normed)
+
+    # Euclidean distance on L2-normalised vectors: d_eucl = sqrt(2 - 2*cos_sim)
+    # For DUPE_THRESHOLD (cosine distance) of 0.12:  cos_sim ≈ 0.88
+    # d_eucl = sqrt(2 - 2*0.88) ≈ 0.49.  We use a slightly generous cutoff.
+    eucl_threshold = float(np.sqrt(2.0 * DUPE_THRESHOLD))
+
+    distances, indices = nn.kneighbors(normed)
+
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for i in range(n):
+        for dist, j in zip(distances[i], indices[i]):
+            if j == i:
+                continue
+            if dist > eucl_threshold:
+                continue
+            pair = tuple(sorted((files[i]["path"], files[int(j)]["path"])))
+            if pair not in seen:
+                seen.add(pair)
+                pairs.append(pair)
+
+    return [
+        {"op": "duplicate", "files": sorted(grp),
+         "reason": "Very similar content (embedding distance) — review and consolidate"}
+        for grp in _groups_from_pairs(pairs)
+    ]
+
+
+def find_duplicates(
+    directory: str,
+    files: list[dict],
+    embeddings: np.ndarray | None = None,
+) -> list[dict]:
+    """Find duplicate files.
+
+    Priority order:
+    1. Fresh embeddings from the organize step (fastest, no extra work)
+    2. Cached vectors from the ai-search DB
+    3. LLM-based fallback (slowest)
+    """
+    if embeddings is not None and len(embeddings) == len(files):
+        print("  Using fresh embeddings for duplicate detection.", file=sys.stderr)
+        return _dedupe_via_embeddings(files, embeddings)
+
     db_result = _dedupe_via_db(directory)
     if db_result is not None:
         return db_result
+
+    # If we have no embeddings and no DB, embed now then dedupe
+    if len(files) <= 5000:
+        print("  No cached embeddings — embedding files for duplicate detection…",
+              file=sys.stderr)
+        fresh = embed_files(files)
+        return _dedupe_via_embeddings(files, fresh)
+
     print("  No ai-search index found for this directory — using LLM for duplicate detection.",
           file=sys.stderr)
     return _dedupe_via_llm(files)
 
 
 # ── Plan Validation ────────────────────────────────────────────────────────────
-
-# Folder names that almost always indicate the LLM punted instead of thinking.
-_GENERIC_FOLDER_NAMES = frozenset({
-    "backup", "backups", "archive", "archives", "old", "misc",
-    "miscellaneous", "other", "stuff", "temp", "tmp", "unsorted",
-})
 
 
 def validate_plan(plan: dict, file_count: int) -> list[dict]:
@@ -1000,15 +1402,24 @@ def validate_plan(plan: dict, file_count: int) -> list[dict]:
                          f"folder '{top_folder}' — plan may be too coarse.",
             })
 
-    # ── 2. Generic folder names ───────────────────────────────────────────────
+    # ── 2. Generic folder names (only flag LLM-invented ones) ───────────────
+    # Derive existing top-level dirs from move source paths so we don't
+    # warn about generic names that already exist in the user's tree.
+    existing_top_dirs = {
+        Path(m["from"]).parts[0].lower()
+        for m in moves
+        if m.get("from") and "/" in m["from"]
+    }
+    generic_stems = {n.rstrip("s") for n in _GENERIC_FOLDER_NAMES}
+
     generic_found = []
     for m in mkdirs:
         folder = m.get("path", "")
-        # Check each path component
-        for part in Path(folder).parts:
-            if part.lower().rstrip("s") in {n.rstrip("s") for n in _GENERIC_FOLDER_NAMES}:
-                generic_found.append(folder)
-                break
+        root_part = Path(folder).parts[0].lower() if folder else ""
+        is_generic = root_part.rstrip("s") in generic_stems
+        already_exists = root_part in existing_top_dirs
+        if is_generic and not already_exists:
+            generic_found.append(folder)
     if generic_found:
         names = ", ".join(sorted(set(generic_found)))
         warnings.append({
@@ -1184,20 +1595,22 @@ def main() -> None:
 
         ops: list[dict] = []
         summary = ""
+        cached_embeddings: np.ndarray | None = None
 
         if args.rename or args.organize or args.flatten:
-            plan = generate_plan(
+            plan, cached_embeddings = generate_plan(
                 files, args.plan,
                 do_rename=args.rename,
                 do_organize=args.organize,
                 do_flatten=args.flatten,
+                do_dedupe=args.dedupe,
             )
             ops.extend(plan.get("operations", []))
             summary = plan.get("summary", "")
 
         if args.dedupe:
             print("Detecting duplicates…", file=sys.stderr)
-            dupe_ops = find_duplicates(args.plan, files)
+            dupe_ops = find_duplicates(args.plan, files, embeddings=cached_embeddings)
             ops.extend(dupe_ops)
             n = len(dupe_ops)
             if n:
