@@ -165,9 +165,15 @@ def init_db() -> sqlite3.Connection:
             rowid INTEGER PRIMARY KEY,
             filepath TEXT NOT NULL,
             mtime REAL NOT NULL,
-            snippet TEXT NOT NULL
+            snippet TEXT NOT NULL,
+            chunk_text TEXT NOT NULL DEFAULT ''
         )
     """)
+    # Migrate older databases that lack the chunk_text column
+    try:
+        conn.execute("SELECT chunk_text FROM file_metadata LIMIT 0")
+    except sqlite3.OperationalError:
+        conn.execute("ALTER TABLE file_metadata ADD COLUMN chunk_text TEXT NOT NULL DEFAULT ''")
     return conn
 
 
@@ -235,9 +241,9 @@ def index_directory(conn: sqlite3.Connection, directory: str):
             
             # Insert metadata and get rowid
             cur.execute("""
-                INSERT INTO file_metadata (filepath, mtime, snippet)
-                VALUES (?, ?, ?)
-            """, (filepath_str, mtime, snippet))
+                INSERT INTO file_metadata (filepath, mtime, snippet, chunk_text)
+                VALUES (?, ?, ?, ?)
+            """, (filepath_str, mtime, snippet, chunk))
             
             # Insert vector exactly at the same rowid
             new_id = cur.lastrowid

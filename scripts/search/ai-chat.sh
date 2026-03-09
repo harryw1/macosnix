@@ -146,6 +146,31 @@ if [ -z "$ANSWER" ]; then
   exit 1
 fi
 
+# ── Low-confidence warning ─────────────────────────────────────────────────────
+LOW_CONFIDENCE=$(python3 -c "
+import json, os, sys
+try:
+    with open(os.environ['RESULT_FILE']) as f:
+        d = json.load(f)
+    sources = d.get('sources', [])
+    if not sources:
+        print('no_sources')
+    elif len(sources) == 1 and sources[0].get('score', 0) < 0.6:
+        print('weak')
+except Exception:
+    pass
+" 2>/dev/null || true)
+
+if [ "$LOW_CONFIDENCE" = "no_sources" ]; then
+  gum style --foreground 214 \
+    "⚠  No matching files found. Try re-indexing or asking a more specific question."
+  echo ""
+elif [ "$LOW_CONFIDENCE" = "weak" ]; then
+  gum style --foreground 214 \
+    "⚠  Low-confidence match — the answer below may not be accurate."
+  echo ""
+fi
+
 # ── Display answer ─────────────────────────────────────────────────────────────
 echo ""
 TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)

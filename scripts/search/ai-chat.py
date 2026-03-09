@@ -37,7 +37,7 @@ EMBED_MODEL = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:0.6b")
 CHAT_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3.5:9b")
 
 TOP_K = 5
-CONTEXT_CHARS = 800  # chars per chunk injected into the prompt
+CONTEXT_CHARS = 2000  # chars per chunk injected into the prompt
 
 
 # ── Embedding ──────────────────────────────────────────────────────────────────
@@ -91,6 +91,7 @@ def retrieve(conn: sqlite3.Connection, query: str, scope: str | None = None) -> 
             SELECT
                 m.filepath,
                 m.snippet,
+                COALESCE(m.chunk_text, m.snippet) AS chunk_text,
                 vec_distance_cosine(e.embedding, ?) AS distance
             FROM file_embeddings e
             JOIN file_metadata m ON e.rowid = m.rowid
@@ -105,13 +106,18 @@ def retrieve(conn: sqlite3.Connection, query: str, scope: str | None = None) -> 
         sys.exit(1)
 
     results = []
-    for filepath, snippet, dist in rows:
+    for filepath, snippet, chunk_text, dist in rows:
         if dist > 0.8:   # discard clearly unrelated chunks
             continue
         if scope_prefix and not filepath.startswith(scope_prefix):
             continue     # restrict to current project
         score = round(max(0.0, 1.0 - dist), 4)
-        results.append({"filepath": filepath, "snippet": snippet, "score": score})
+        results.append({
+            "filepath": filepath,
+            "snippet": snippet,
+            "chunk_text": chunk_text,
+            "score": score,
+        })
         if len(results) >= TOP_K:
             break
 
@@ -125,8 +131,9 @@ def build_prompt(query: str, chunks: list[dict]) -> str:
     else:
         parts = []
         for c in chunks:
-            snippet = c["snippet"][:CONTEXT_CHARS].strip()
-            parts.append(f"[File: {c['filepath']}]\n{snippet}")
+            # Prefer full chunk text when available, fall back to snippet
+            text = c.get("chunk_text") or c["snippet"]
+            parts.append(f"[File: {c['filepath']}]\n{text[:CONTEXT_CHARS].strip()}")
         context_str = "\n\n".join(parts)
 
     return "\n".join([
