@@ -117,25 +117,27 @@ for entry in "${TOOLS[@]}"; do
   labels+=("$label")
 done
 
-clear
-gum style --bold --foreground 212 --margin "1 0 0 0" \
+echo ""
+gum style --bold --foreground 212 \
   "󰚩 AI Toolkit"
-gum style --foreground 245 --margin "0 0 1 0" \
-  "  Select a tool, or run 'ai <tool>' directly"
+echo ""
 
 choice=$(printf '%s\n' "${labels[@]}" | gum choose \
   --cursor "▸ " \
   --height 20) || exit 0
 
-# Look up the command for the selected label
+# Extract the command name (first non-space word) from the selection
+selected_name=$(echo "$choice" | awk '{print $1}')
+
+# Look up the command and description by matching the tool name
 cmd=""
 desc=""
 for entry in "${TOOLS[@]}"; do
-  label="${entry%%|*}"
-  if [[ "$label" == "$choice" ]]; then
-    rest="${entry#*|}"
-    cmd="${rest%%|*}"
-    desc="${rest#*|}"
+  entry_cmd="${entry#*|}"
+  entry_cmd="${entry_cmd%%|*}"
+  if [[ "$entry_cmd" == "$selected_name" ]]; then
+    cmd="$entry_cmd"
+    desc="${entry##*|}"
     break
   fi
 done
@@ -148,17 +150,16 @@ echo ""
 gum style --foreground 245 "  $desc"
 echo ""
 
-# Tools that have their own TUI — launch directly
+# Dispatch — each tool gets the right launch behaviour
 case "$cmd" in
-  ai-db|ai-config|ai-organize|ai-search|ai-chat)
+
+  # ── Self-contained TUIs (work with no args) ──────────────────────────────
+  ai-db|ai-config|ai-chat)
     exec "$cmd"
     ;;
-esac
 
-# Tools that need input — prompt for it
-case "$cmd" in
+  # ── Tools that read git state (no input needed) ─────────────────────────
   git-ai-commit)
-    # Just run it — it reads the git diff itself
     exec git-ai-commit
     ;;
 
@@ -166,6 +167,43 @@ case "$cmd" in
     exec ai-pr
     ;;
 
+  # ── Search: offer index-or-query submenu ─────────────────────────────────
+  ai-search)
+    action=$(gum choose \
+      --header "ai-search:" \
+      --cursor "▸ " \
+      "Search (query your indexed files)" \
+      "Index a directory" \
+      "Show index status") || exit 0
+
+    case "$action" in
+      "Search"*)
+        query=$(gum input \
+          --header "Semantic search query:" \
+          --placeholder "e.g., where are my zsh aliases defined?" \
+          --width 80) || exit 0
+        [[ -z "$query" ]] && exit 0
+        exec ai-search "$query"
+        ;;
+      "Index"*)
+        dir=$(gum file --directory --height 10) || exit 0
+        [[ -z "$dir" ]] && exit 0
+        exec ai-search --index "$dir"
+        ;;
+      "Show"*)
+        exec ai-search --status
+        ;;
+    esac
+    ;;
+
+  # ── Organize: needs a target directory ───────────────────────────────────
+  ai-organize)
+    dir=$(gum file --directory --height 10) || exit 0
+    [[ -z "$dir" ]] && exit 0
+    exec ai-organize "$dir"
+    ;;
+
+  # ── Single-line input tools ──────────────────────────────────────────────
   ai-cmd)
     input=$(gum input \
       --header "Describe the command you need:" \
@@ -184,6 +222,7 @@ case "$cmd" in
     exec ai-explain "$input"
     ;;
 
+  # ── Multi-line input tools (pipe stdin) ──────────────────────────────────
   ai-narrative|ai-slide-copy)
     input=$(gum write \
       --header "Paste data or metrics (Ctrl+D to finish):" \
@@ -191,31 +230,24 @@ case "$cmd" in
       --width 80 \
       --height 10) || exit 0
     [[ -z "$input" ]] && exit 0
-    echo "$input" | exec "$cmd"
+    echo "$input" | "$cmd"
     ;;
 
+  # ── Duck: needs a file and a question ────────────────────────────────────
   ai-duck)
-    # Need a file and a question
     file=$(gum file --height 10) || exit 0
     [[ -z "$file" ]] && exit 0
     question=$(gum input \
-      --header "Question about $file:" \
+      --header "Question about $(basename "$file"):" \
       --placeholder "e.g., what are the top 10 rows by revenue?" \
       --width 80) || exit 0
     [[ -z "$question" ]] && exit 0
     exec ai-duck "$file" "$question"
     ;;
 
-  ollama-pull)
-    exec ollama-pull
-    ;;
-
-  pyinit)
-    exec pyinit
-    ;;
-
-  report-init)
-    exec report-init
+  # ── Simple launchers (own interactive flow) ──────────────────────────────
+  ollama-pull|pyinit|report-init)
+    exec "$cmd"
     ;;
 
   *)
