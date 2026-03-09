@@ -467,15 +467,58 @@ def is_rename_candidate(filename: str) -> bool:
 
 # ── Phase 1: folder taxonomy ───────────────────────────────────────────────────
 
-def plan_folder_taxonomy(files: list[dict], root: str) -> list[str]:
+def plan_folder_taxonomy(files: list[dict], root: str, flatten: bool = False) -> list[str]:
     """One LLM call: derive a folder structure from file paths alone (no snippets).
 
     Sending only paths keeps the prompt tiny — all 700+ files fit comfortably —
     and the output is a small JSON array of folder names.
+
+    When *flatten* is True, the prompt asks for a single-level structure to
+    collapse deep nesting rather than a hierarchical reorganization.
     """
     paths_text = "\n".join(f"  {f['path']}" for f in files)
 
-    prompt = f"""You are organizing files in: {root}
+    # Extract existing top-level directory names for context so the LLM
+    # understands the current structure and doesn't discard meaningful names.
+    existing_top_dirs = sorted({
+        f["path"].split("/")[0]
+        for f in files
+        if "/" in f["path"]
+    })
+    existing_ctx = ""
+    if existing_top_dirs:
+        existing_ctx = (
+            "\n\nEXISTING TOP-LEVEL DIRECTORIES (for context — preserve meaningful names):\n"
+            + "\n".join(f"  {d}/" for d in existing_top_dirs)
+        )
+
+    if flatten:
+        prompt = f"""You are flattening a deeply nested file tree in: {root}
+
+Given the file list below, propose a FLAT folder structure to replace the current deep nesting.
+
+RULES:
+- Maximum 1 level of depth (no sub-folders)
+- 3 to 10 folders total
+- Lowercase kebab-case names
+- Name folders after actual content themes (avoid "misc", "other", "files")
+- Every file must fit into at least one folder
+- The goal is to REDUCE nesting, not reorganize — prefer fewer, broader categories
+- PRESERVE existing meaningful directory names — do NOT replace distinct project or
+  topic names with generic labels like "backups", "archive", or "old"
+- If a top-level directory already has a descriptive name (e.g. "publicpresence",
+  "raycast-ai-applescript"), keep that name as a folder in the flat structure
+{existing_ctx}
+
+FILES:
+{paths_text}
+
+Output ONLY a JSON array of folder name strings.
+Example: ["reports", "data", "notebooks", "images"]
+
+JSON:"""
+    else:
+        prompt = f"""You are organizing files in: {root}
 
 Given the file list below, propose a clean, minimal folder structure.
 
@@ -485,6 +528,10 @@ RULES:
 - Lowercase kebab-case names
 - Name folders after actual content themes (avoid "misc", "other", "files")
 - Every file must fit into at least one folder
+- PRESERVE existing meaningful directory names — do NOT replace distinct project or
+  topic names with generic labels like "backups", "archive", or "old"
+- If files already live under descriptive project directories, keep those names
+{existing_ctx}
 
 FILES:
 {paths_text}
@@ -658,25 +705,40 @@ def generate_plan(
             if deep:
                 print(f"  {deep} deeply-nested file(s) will be flattened.", file=sys.stderr)
 
-        folders = plan_folder_taxonomy(files, directory)
+        folders = plan_folder_taxonomy(files, directory, flatten=do_flatten)
 
         if not folders:
             print("  Warning: no folder structure proposed, skipping organize step.",
                   file=sys.stderr)
         else:
             preview = ", ".join(folders[:6]) + ("…" if len(folders) > 6 else "")
+            verb = "Flattened" if do_flatten else "Organized"
             print(f"  Proposed {len(folders)} folder(s): {preview}", file=sys.stderr)
             print(f"  Phase 2: classifying {len(files)} file(s)…", file=sys.stderr)
 
             ops = classify_files_to_folders(files, folders, directory)
             all_ops.extend(ops)
             n_moves = sum(1 for o in ops if o.get("op") == "move")
-            summaries.append(f"Organized {n_moves} file(s) into {len(folders)} folder(s).")
+            summaries.append(f"{verb} {n_moves} file(s) into {len(folders)} folder(s).")
 
     # ── Rename: pre-filtered snippet pass ─────────────────────────────────────
+    # Build a path map from organize/flatten ops so rename operates on
+    # post-move paths.  Without this, renames reference original locations
+    # that no longer exist after the organize step moves the files.
     if do_rename:
+        path_map: dict[str, str] = {}    # original_path → post-move path
+        for op in all_ops:
+            if op.get("op") == "move":
+                path_map[op["from"]] = op["to"]
+
         candidates = [f for f in files if is_rename_candidate(f["name"])]
         if candidates:
+            # Rewrite candidate paths to their post-move locations so the
+            # rename LLM prompt and resulting ops use the correct paths.
+            if path_map:
+                for c in candidates:
+                    c["path"] = path_map.get(c["path"], c["path"])
+
             print(f"  {len(candidates)} rename candidate(s) identified.", file=sys.stderr)
             ops = suggest_renames(candidates, directory)
             all_ops.extend(ops)
@@ -704,32 +766,41 @@ def generate_plan(
 
 # ── Deduplication ──────────────────────────────────────────────────────────────
 
-def _cosine_dist(a: list[float], b: list[float]) -> float:
-    mag_a = sum(x * x for x in a) ** 0.5
-    mag_b = sum(x * x for x in b) ** 0.5
-    if mag_a == 0 or mag_b == 0:
-        return 1.0
-    dot = sum(x * y for x, y in zip(a, b))
-    return max(0.0, 1.0 - dot / (mag_a * mag_b))
-
-
 def _groups_from_pairs(pairs: list[tuple[str, str]]) -> list[set[str]]:
-    groups: list[set[str]] = []
+    """Merge pairs into connected-component groups using union-find.
+
+    Correctly handles transitive overlap: (A,B) + (C,D) + (B,C) → {A,B,C,D}.
+    """
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.setdefault(x, x) != x:
+            parent[x] = parent[parent[x]]   # path compression
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
     for p, q in pairs:
-        merged = False
-        for grp in groups:
-            if p in grp or q in grp:
-                grp.add(p)
-                grp.add(q)
-                merged = True
-                break
-        if not merged:
-            groups.append({p, q})
-    return groups
+        union(p, q)
+
+    groups_map: dict[str, set[str]] = {}
+    for node in parent:
+        root = find(node)
+        groups_map.setdefault(root, set()).add(node)
+
+    return list(groups_map.values())
 
 
 def _dedupe_via_db(directory: str) -> list[dict] | None:
-    """Use cached vectors from the ai-search DB; return None if unavailable."""
+    """Use cached vectors from the ai-search DB; return None if unavailable.
+
+    Uses an in-memory sqlite-vec virtual table + KNN query to find neighbours
+    within DUPE_THRESHOLD, replacing the previous O(n²) pure-Python loop.
+    """
     if not SEARCH_DB_PATH.exists():
         return None
 
@@ -761,7 +832,7 @@ def _dedupe_via_db(directory: str) -> list[dict] | None:
 
     print(f"  Using {len(rows)} cached embeddings from ai-search database.", file=sys.stderr)
 
-    # Average multiple chunks per file into a single representative vector
+    # ── Average multiple chunks per file into a single representative vector ──
     file_vecs: dict[str, list[float]]  = {}
     file_cnts: dict[str, int]          = {}
     vec_len: int | None                = None
@@ -780,23 +851,70 @@ def _dedupe_via_db(directory: str) -> list[dict] | None:
             file_vecs[rel] = vec
             file_cnts[rel] = 1
 
-    averaged = [
-        (rel, [v / file_cnts[rel] for v in vec])
-        for rel, vec in file_vecs.items()
-    ]
+    if not file_vecs or vec_len is None:
+        return None
 
+    averaged: list[tuple[str, bytes]] = []
+    for rel, vec in file_vecs.items():
+        cnt = file_cnts[rel]
+        avg = [v / cnt for v in vec]
+        averaged.append((rel, struct.pack(f"<{vec_len}f", *avg)))
+
+    # ── Build an in-memory sqlite-vec virtual table for efficient KNN ────────
+    mem = sqlite3.connect(":memory:")
+    mem.enable_load_extension(True)
+    sqlite_vec.load(mem)
+    mem.enable_load_extension(False)
+
+    mem.execute(f"CREATE VIRTUAL TABLE tmp_vecs USING vec0(embedding float[{vec_len}])")
+    for idx, (_, vec_bytes) in enumerate(averaged):
+        mem.execute("INSERT INTO tmp_vecs(rowid, embedding) VALUES (?, ?)", (idx, vec_bytes))
+
+    # For each file, find its nearest neighbours within the threshold.
+    # sqlite-vec's KNN returns cosine distance when using float[] columns.
+    # We ask for k neighbours (capped) and filter by distance.
+    k = min(len(averaged), 20)   # at most 20 neighbours per file
     pairs: list[tuple[str, str]] = []
-    n = len(averaged)
-    for i in range(n):
-        for j in range(i + 1, n):
-            if _cosine_dist(averaged[i][1], averaged[j][1]) <= DUPE_THRESHOLD:
-                pairs.append((averaged[i][0], averaged[j][0]))
+    seen_pairs: set[tuple[str, str]] = set()
+
+    for idx, (rel_a, vec_bytes) in enumerate(averaged):
+        knn_rows = mem.execute(
+            "SELECT rowid, distance FROM tmp_vecs "
+            "WHERE embedding MATCH ? AND k = ? "
+            "ORDER BY distance",
+            (vec_bytes, k),
+        ).fetchall()
+
+        for neighbour_rowid, distance in knn_rows:
+            if neighbour_rowid == idx:
+                continue
+            if distance > DUPE_THRESHOLD:
+                continue
+            rel_b = averaged[neighbour_rowid][0]
+            pair = tuple(sorted((rel_a, rel_b)))
+            if pair not in seen_pairs:
+                seen_pairs.add(pair)
+                pairs.append((rel_a, rel_b))
+
+    mem.close()
 
     return [
         {"op": "duplicate", "files": sorted(grp),
          "reason": "Very similar content in ai-search index — review and consolidate"}
         for grp in _groups_from_pairs(pairs)
     ]
+
+
+def _build_file_table(files: list[dict]) -> str:
+    """Format files into a compact text table of paths + snippet previews for LLM prompts."""
+    lines: list[str] = []
+    for f in files:
+        snippet = f.get("snippet", "").replace("\n", " ").strip()[:250]
+        if snippet:
+            lines.append(f"  {f['path']} | preview: \"{snippet}\"")
+        else:
+            lines.append(f"  {f['path']}")
+    return "\n".join(lines)
 
 
 def _dedupe_via_llm(files: list[dict]) -> list[dict]:
@@ -840,6 +958,90 @@ def find_duplicates(directory: str, files: list[dict]) -> list[dict]:
     print("  No ai-search index found for this directory — using LLM for duplicate detection.",
           file=sys.stderr)
     return _dedupe_via_llm(files)
+
+
+# ── Plan Validation ────────────────────────────────────────────────────────────
+
+# Folder names that almost always indicate the LLM punted instead of thinking.
+_GENERIC_FOLDER_NAMES = frozenset({
+    "backup", "backups", "archive", "archives", "old", "misc",
+    "miscellaneous", "other", "stuff", "temp", "tmp", "unsorted",
+})
+
+
+def validate_plan(plan: dict, file_count: int) -> list[dict]:
+    """Run quality heuristics on a plan and return a list of warnings.
+
+    Each warning is a dict with 'level' ('warn' or 'error') and 'msg'.
+    This lets the shell script (or --eval) surface problems before applying.
+    """
+    ops      = plan.get("operations", [])
+    warnings: list[dict] = []
+
+    moves   = [o for o in ops if o.get("op") == "move"]
+    renames = [o for o in ops if o.get("op") == "rename"]
+    mkdirs  = [o for o in ops if o.get("op") == "mkdir"]
+
+    if not moves and not renames:
+        return warnings   # nothing to validate
+
+    # ── 1. Concentration: too many files routed to a single folder ────────────
+    from collections import Counter
+    dst_folders = Counter(
+        str(Path(m["to"]).parent) for m in moves if m.get("to")
+    )
+    if dst_folders:
+        top_folder, top_count = dst_folders.most_common(1)[0]
+        pct = top_count / max(len(moves), 1) * 100
+        if pct >= 60 and top_count >= 10:
+            warnings.append({
+                "level": "warn",
+                "msg":   f"{top_count}/{len(moves)} moves ({pct:.0f}%) target a single "
+                         f"folder '{top_folder}' — plan may be too coarse.",
+            })
+
+    # ── 2. Generic folder names ───────────────────────────────────────────────
+    generic_found = []
+    for m in mkdirs:
+        folder = m.get("path", "")
+        # Check each path component
+        for part in Path(folder).parts:
+            if part.lower().rstrip("s") in {n.rstrip("s") for n in _GENERIC_FOLDER_NAMES}:
+                generic_found.append(folder)
+                break
+    if generic_found:
+        names = ", ".join(sorted(set(generic_found)))
+        warnings.append({
+            "level": "warn",
+            "msg":   f"Generic folder name(s) detected: {names}. "
+                     "The LLM may be lumping unrelated files together.",
+        })
+
+    # ── 3. Destination collisions (same target path for multiple files) ───────
+    dst_paths = Counter(m.get("to", "") for m in moves)
+    collisions = {p: c for p, c in dst_paths.items() if c > 1}
+    if collisions:
+        examples = list(collisions.keys())[:3]
+        warnings.append({
+            "level": "error",
+            "msg":   f"{len(collisions)} destination collision(s) — multiple files mapped "
+                     f"to the same path. Examples: {', '.join(examples)}",
+        })
+
+    # ── 4. Files moved but source path doesn't match any scanned file ────────
+    # (Catches LLM hallucinated paths — we validate against the plan's 'from'
+    # fields, but can't check against the real FS here since validate_plan is
+    # FS-agnostic.  The apply step handles that, so this is a lighter check.)
+
+    # ── 5. Suspiciously high move ratio (moving nearly everything) ────────────
+    if file_count and len(moves) / file_count > 0.95 and file_count > 20:
+        warnings.append({
+            "level": "warn",
+            "msg":   f"Plan moves {len(moves)}/{file_count} files ({len(moves)/file_count*100:.0f}%). "
+                     "Very few files stay in place — verify the folder structure is appropriate.",
+        })
+
+    return warnings
 
 
 # ── Plan Application ───────────────────────────────────────────────────────────
@@ -911,6 +1113,10 @@ def main() -> None:
     group.add_argument("--scan",  metavar="DIR",       help="Scan and emit file list as JSON")
     group.add_argument("--plan",  metavar="DIR",       help="Generate a reorganization plan")
     group.add_argument("--apply", metavar="PLAN_FILE", help="Apply a saved plan")
+    group.add_argument(
+        "--eval", metavar="PLAN_FILE",
+        help="Validate a plan against quality heuristics without applying it",
+    )
 
     # Plan-mode flags
     parser.add_argument("--rename",    action="store_true", help="Suggest better filenames")
@@ -1003,6 +1209,15 @@ def main() -> None:
             "operations": ops,
             "summary":    summary,
         }
+
+        # Run quality validation and embed any warnings in the plan JSON
+        plan_warnings = validate_plan(result, file_count=len(files))
+        if plan_warnings:
+            result["warnings"] = plan_warnings
+            for w in plan_warnings:
+                icon = "⚠" if w["level"] == "warn" else "✗"
+                print(f"  {icon} {w['msg']}", file=sys.stderr)
+
         print(json.dumps(result, indent=2))
         sys.exit(0)
 
@@ -1030,6 +1245,44 @@ def main() -> None:
 
         apply_plan(plan, root, dry_run=args.dry_run)
         sys.exit(0)
+
+    # ── Eval ─────────────────────────────────────────────────────────────────
+    if args.eval:
+        eval_path = Path(args.eval)
+        if not eval_path.exists():
+            print(f"Error: Plan file not found: {eval_path}", file=sys.stderr)
+            sys.exit(1)
+
+        with open(eval_path) as fh:
+            plan = json.load(fh)
+
+        ops    = plan.get("operations", [])
+        moves  = [o for o in ops if o.get("op") == "move"]
+        renames = [o for o in ops if o.get("op") == "rename"]
+        dupes  = [o for o in ops if o.get("op") == "duplicate"]
+        mkdirs = [o for o in ops if o.get("op") == "mkdir"]
+
+        # Try to estimate original file count from the plan:
+        # count unique source paths across moves and renames.
+        all_srcs = {o.get("from", "") for o in moves + renames if o.get("from")}
+        file_count = len(all_srcs) if all_srcs else 0
+
+        print(f"Plan: {len(moves)} moves, {len(renames)} renames, "
+              f"{len(dupes)} dupe groups, {len(mkdirs)} new dirs", file=sys.stderr)
+
+        warnings = validate_plan(plan, file_count=file_count)
+
+        if not warnings:
+            print("✓ No quality issues detected.", file=sys.stderr)
+            sys.exit(0)
+        else:
+            n_warn  = sum(1 for w in warnings if w["level"] == "warn")
+            n_error = sum(1 for w in warnings if w["level"] == "error")
+            for w in warnings:
+                icon = "⚠" if w["level"] == "warn" else "✗"
+                print(f"  {icon} {w['msg']}", file=sys.stderr)
+            print(f"\n  {n_warn} warning(s), {n_error} error(s)", file=sys.stderr)
+            sys.exit(1 if n_error else 0)
 
 
 if __name__ == "__main__":

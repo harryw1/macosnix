@@ -251,6 +251,15 @@ if dupes:
 
 print(f"{dim}─────────────────────────────────────────────────{reset}")
 print(f"  {actionable} file operation(s)  ·  {len(dupes)} duplicate group(s)")
+
+# ── Validation warnings ──────────────────────────────────────────────────
+warnings = plan.get("warnings", [])
+if warnings:
+    print()
+    print(f"{bold}{yellow}  Quality checks{reset}")
+    for w in warnings:
+        icon = f"{yellow}⚠{reset}" if w.get("level") == "warn" else f"{red}✗{reset}"
+        print(f"  {icon} {w['msg']}")
 PYEOF
 
 # ── Determine if there's anything to apply ─────────────────────────────────────
