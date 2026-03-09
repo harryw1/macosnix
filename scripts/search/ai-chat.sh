@@ -148,7 +148,14 @@ fi
 
 # ── Display answer ─────────────────────────────────────────────────────────────
 echo ""
-printf '%s\n' "$ANSWER" | gum format
+TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
+if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then TERM_WIDTH=80; fi
+[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
+
+gum style \
+  --width "$TERM_WIDTH" \
+  --border rounded --padding "1 2" \
+  "$ANSWER"
 echo ""
 
 # ── Display sources ────────────────────────────────────────────────────────────
