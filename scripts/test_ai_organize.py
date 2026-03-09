@@ -420,6 +420,30 @@ class TestRenameCandidate:
         assert mod.is_rename_candidate("20240115.png") is True
         assert mod.is_rename_candidate("abcdef1234.dat") is True
 
+    def test_camera_underscore_names(self):
+        assert mod.is_rename_candidate("IMG_20240115_154212.jpg") is True
+        assert mod.is_rename_candidate("DSC_0042.jpg") is True
+        assert mod.is_rename_candidate("VID_20240115_120000.mp4") is True
+
+    def test_screenshot_names(self):
+        assert mod.is_rename_candidate("Screenshot 2024-01-15 at 3.42.12 PM.png") is True
+        assert mod.is_rename_candidate("Screen Shot 2024-01-15 at 10.00.00 AM.png") is True
+        assert mod.is_rename_candidate("Screenshot_20240115_154212.png") is True
+
+    def test_whatsapp_names(self):
+        assert mod.is_rename_candidate("IMG-20240115-WA0042.jpg") is True
+        assert mod.is_rename_candidate("VID-20240115-WA0003.mp4") is True
+        assert mod.is_rename_candidate("AUD-20240115-WA0001.ogg") is True
+
+    def test_uuid_names(self):
+        assert mod.is_rename_candidate("4a3b2c1d-e5f6-7890-abcd-ef1234567890.pdf") is True
+
+    def test_copy_duplicate_names(self):
+        assert mod.is_rename_candidate("Copy of Budget.xlsx") is True
+        assert mod.is_rename_candidate("report (1).pdf") is True
+        assert mod.is_rename_candidate("notes (2).txt") is True
+        assert mod.is_rename_candidate("file - Copy.docx") is True
+
     def test_descriptive_names(self):
         assert mod.is_rename_candidate("quarterly-report.pdf") is False
         assert mod.is_rename_candidate("logo-dark.svg") is False

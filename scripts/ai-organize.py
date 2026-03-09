@@ -475,6 +475,20 @@ _GENERIC_STEM_RE = [
         re.IGNORECASE,
     ),
     re.compile(r'^[A-Z]{2,5}\d{3,}$'),               # IMG0001, DSC09876, DCIM0042
+    # Camera/phone files with underscores or dashes: IMG_20240115_154212, DSC_0042
+    re.compile(r'^[A-Z]{2,5}[_\-]\d[\d_\-]+$'),
+    # macOS screenshots: "Screenshot 2024-01-15 at 3.42.12 PM" (spaces become _ or stay)
+    re.compile(r'^Screen\s*Shot[\s_\-]+\d', re.IGNORECASE),
+    re.compile(r'^Screenshot[\s_\-]+\d', re.IGNORECASE),
+    # WhatsApp media: IMG-20240115-WA0042, VID-20240115-WA0003
+    re.compile(r'^(IMG|VID|AUD|PTT|DOC)[_\-]\d{8}[_\-]WA\d+$', re.IGNORECASE),
+    # UUIDs: 4a3b2c1d-e5f6-7890-abcd-ef1234567890
+    re.compile(r'^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$',
+               re.IGNORECASE),
+    # "Copy of …" or duplicate suffixes: "Copy of Budget", "report (1)", "file - Copy"
+    re.compile(r'^Copy of\s', re.IGNORECASE),
+    re.compile(r'.+\s*\(\d+\)$'),                     # report (1), notes (2)
+    re.compile(r'.+\s*-\s*Copy$', re.IGNORECASE),     # file - Copy (Windows)
     re.compile(r'^\d{4}-\d{2}-\d{2}$'),              # 2024-01-15  (date, no description)
     re.compile(r'^\d{8,}$'),                          # purely numeric (timestamps, IDs)
     re.compile(r'^[a-f0-9]{8,}$', re.IGNORECASE),    # hash-named files
