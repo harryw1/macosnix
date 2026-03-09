@@ -31,35 +31,60 @@ FLAGS_GIVEN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --rename)     DO_RENAME=true;     FLAGS_GIVEN=true; shift ;;
-    --organize)   DO_ORGANIZE=true;   FLAGS_GIVEN=true; shift ;;
-    --flatten)    DO_FLATTEN=true;    FLAGS_GIVEN=true; shift ;;
-    --dedupe)     DO_DEDUPE=true;     FLAGS_GIVEN=true; shift ;;
-    --dry-run)    DO_DRY_RUN=true;    shift ;;
-    --top-level)  DO_TOP_LEVEL=true;  shift ;;
-    --all-files)  DO_ALL_FILES=true;  shift ;;
-    --help|-h)
-      echo "Usage: ai-organize [DIR] [--rename] [--organize] [--flatten] [--dedupe] [--dry-run] [--top-level] [--all-files]"
-      echo ""
-      echo "  --rename      Suggest more-descriptive filenames"
-      echo "  --organize    Propose a logical folder structure"
-      echo "  --flatten     Collapse nested paths into a flat layout"
-      echo "  --dedupe      Flag files with near-identical content"
-      echo "  --dry-run     Preview changes without applying them"
-      echo "  --top-level   Scan only the top-level directory (non-recursive)"
-      echo "  --all-files   Include source/config files (skipped by default in code projects)"
-      exit 0
-      ;;
-    -*)
-      echo "Unknown option: $1"
-      exit 1
-      ;;
-    *)
-      if [[ -z "$TARGET_DIR" ]]; then
-        TARGET_DIR="$1"
-      fi
-      shift
-      ;;
+  --rename)
+    DO_RENAME=true
+    FLAGS_GIVEN=true
+    shift
+    ;;
+  --organize)
+    DO_ORGANIZE=true
+    FLAGS_GIVEN=true
+    shift
+    ;;
+  --flatten)
+    DO_FLATTEN=true
+    FLAGS_GIVEN=true
+    shift
+    ;;
+  --dedupe)
+    DO_DEDUPE=true
+    FLAGS_GIVEN=true
+    shift
+    ;;
+  --dry-run)
+    DO_DRY_RUN=true
+    shift
+    ;;
+  --top-level)
+    DO_TOP_LEVEL=true
+    shift
+    ;;
+  --all-files)
+    DO_ALL_FILES=true
+    shift
+    ;;
+  --help | -h)
+    echo "Usage: ai-organize [DIR] [--rename] [--organize] [--flatten] [--dedupe] [--dry-run] [--top-level] [--all-files]"
+    echo ""
+    echo "  --rename      Suggest more-descriptive filenames"
+    echo "  --organize    Propose a logical folder structure"
+    echo "  --flatten     Collapse nested paths into a flat layout"
+    echo "  --dedupe      Flag files with near-identical content"
+    echo "  --dry-run     Preview changes without applying them"
+    echo "  --top-level   Scan only the top-level directory (non-recursive)"
+    echo "  --all-files   Include source/config files (skipped by default in code projects)"
+    exit 0
+    ;;
+  -*)
+    echo "Unknown option: $1"
+    exit 1
+    ;;
+  *)
+    if [[ -z "$TARGET_DIR" ]]; then
+      TARGET_DIR="$1"
+    fi
+    shift
+    ;;
   esac
 done
 
@@ -121,9 +146,9 @@ if ! $FLAGS_GIVEN; then
   fi
 
   if echo "$CHOSEN" | grep -q "Reorganize"; then DO_ORGANIZE=true; fi
-  if echo "$CHOSEN" | grep -q "Rename";     then DO_RENAME=true;   fi
-  if echo "$CHOSEN" | grep -q "Flatten";    then DO_FLATTEN=true;  fi
-  if echo "$CHOSEN" | grep -q "duplicates"; then DO_DEDUPE=true;   fi
+  if echo "$CHOSEN" | grep -q "Rename"; then DO_RENAME=true; fi
+  if echo "$CHOSEN" | grep -q "Flatten"; then DO_FLATTEN=true; fi
+  if echo "$CHOSEN" | grep -q "duplicates"; then DO_DEDUPE=true; fi
 fi
 
 # Final safety check
@@ -134,10 +159,10 @@ fi
 
 # ── Assemble python flag list ──────────────────────────────────────────────────
 PY_FLAGS=""
-$DO_RENAME    && PY_FLAGS="$PY_FLAGS --rename"
-$DO_ORGANIZE  && PY_FLAGS="$PY_FLAGS --organize"
-$DO_FLATTEN   && PY_FLAGS="$PY_FLAGS --flatten"
-$DO_DEDUPE    && PY_FLAGS="$PY_FLAGS --dedupe"
+$DO_RENAME && PY_FLAGS="$PY_FLAGS --rename"
+$DO_ORGANIZE && PY_FLAGS="$PY_FLAGS --organize"
+$DO_FLATTEN && PY_FLAGS="$PY_FLAGS --flatten"
+$DO_DEDUPE && PY_FLAGS="$PY_FLAGS --dedupe"
 $DO_TOP_LEVEL && PY_FLAGS="$PY_FLAGS --top-level"
 $DO_ALL_FILES && PY_FLAGS="$PY_FLAGS --all-files"
 
@@ -170,7 +195,7 @@ echo "󰚩  Generating plan… (this may take a minute)"
 echo ""
 
 OLLAMA_MODEL="$MODEL" OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
-  uv run "$PY_SCRIPT" --plan "$TARGET_DIR" --from-scan "$SCAN_FILE" $PY_FLAGS > "$PLAN_FILE"
+  uv run "$PY_SCRIPT" --plan "$TARGET_DIR" --from-scan "$SCAN_FILE" $PY_FLAGS >"$PLAN_FILE"
 
 echo ""
 
@@ -404,7 +429,7 @@ gum spin --title "Applying changes…" -- \
   bash -c "uv run \"$PY_SCRIPT\" --apply \"$PLAN_FILE\""
 
 echo ""
-gum style --bold --border rounded --padding "0 1" "  Done!"
+gum style --bold --border rounded --padding "0 1" "Done!"
 
 DUPE_COUNT=$(PLAN_FILE="$PLAN_FILE" python3 -c "
 import json, os
