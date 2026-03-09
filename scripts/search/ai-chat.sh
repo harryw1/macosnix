@@ -119,30 +119,46 @@ if [ -z "$ANSWER" ]; then
   exit 1
 fi
 
-# ── Low-confidence warning ─────────────────────────────────────────────────────
-LOW_CONFIDENCE=$(python3 -c "
+# ── Quality indicators (verification + source confidence) ─────────────────────
+QUALITY_INFO=$(python3 -c "
 import json, os, sys
 try:
     with open(os.environ['RESULT_FILE']) as f:
         d = json.load(f)
     sources = d.get('sources', [])
+    verified = d.get('verified', True)
+    confidence = d.get('confidence', 1.0)
+    issues = d.get('issues', [])
+
     if not sources:
         print('no_sources')
+    elif not verified and confidence < 0.6:
+        print('unverified')
     elif len(sources) == 1 and sources[0].get('score', 0) < 0.6:
         print('weak')
+    else:
+        print('ok')
 except Exception:
-    pass
-" 2>/dev/null || true)
+    print('ok')
+" 2>/dev/null || echo "ok")
 
-if [ "$LOW_CONFIDENCE" = "no_sources" ]; then
-  gum style --foreground 214 \
-    "⚠  No matching files found. Try re-indexing or asking a more specific question."
-  echo ""
-elif [ "$LOW_CONFIDENCE" = "weak" ]; then
-  gum style --foreground 214 \
-    "⚠  Low-confidence match — the answer below may not be accurate."
-  echo ""
-fi
+case "$QUALITY_INFO" in
+  no_sources)
+    gum style --foreground 214 \
+      "⚠  No matching files found. Try re-indexing or asking a more specific question."
+    echo ""
+    ;;
+  unverified)
+    gum style --foreground 214 \
+      "⚠  Verification: some claims could not be fully verified against source files."
+    echo ""
+    ;;
+  weak)
+    gum style --foreground 214 \
+      "⚠  Low-confidence match — the answer below may not be accurate."
+    echo ""
+    ;;
+esac
 
 # ── Display answer ─────────────────────────────────────────────────────────────
 echo ""
@@ -170,7 +186,18 @@ try:
     sources = d.get('sources', [])
     if not sources:
         sys.exit(0)
-    print(f'{bold}Sources:{reset}')
+
+    # Verification badge
+    verified = d.get('verified', True)
+    confidence = d.get('confidence', 1.0)
+    conf_pct = int(confidence * 100)
+    if verified:
+        badge = f'{green}✓ Verified ({conf_pct}% confidence){reset}'
+    else:
+        yellow = '\033[38;5;214m'
+        badge = f'{yellow}⚠ Unverified ({conf_pct}% confidence){reset}'
+    print(f'{bold}Sources:{reset}  {badge}')
+
     for i, s in enumerate(sources, 1):
         fp    = s['filepath']
         score = int(s['score'] * 100)

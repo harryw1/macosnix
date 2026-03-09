@@ -532,14 +532,17 @@ README
   # `make git` can call it directly (before `make switch` has been run) while
   # this nix-installed binary makes `gaic` available system-wide afterwards.
   git-ai-commit = pkgs.writeShellScriptBin "git-ai-commit" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/git/ai-commit.sh}" "$@"
   '';
 
   ai-explain = pkgs.writeShellScriptBin "ai-explain" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/gen/ai-explain.sh}" "$@"
   '';
 
   ai-pr = pkgs.writeShellScriptBin "ai-pr" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/git/ai-pr.sh}" "$@"
   '';
 
@@ -550,6 +553,7 @@ README
   '';
 
   ai-cmd = pkgs.writeShellScriptBin "ai-cmd" ''
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/gen/ai-cmd.sh}" "$@"
   '';
 
@@ -557,6 +561,7 @@ README
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
     export AI_CHAT_PY_PATH="${../../scripts/search/ai-chat.py}"
     export AI_SEARCH_PY_PATH="${../../scripts/search/ai-search.py}"
+    export AI_LIB_PATH="${../../scripts/lib}"
     exec bash "${../../scripts/search/ai-chat.sh}" "$@"
   '';
 
@@ -576,6 +581,16 @@ README
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
     export AI_ORGANIZE_PY_PATH="${../../scripts/data/ai-organize.py}"
     exec bash "${../../scripts/data/ai-organize.sh}" "$@"
+  '';
+
+  ai-db = pkgs.writeShellScriptBin "ai-db" ''
+    export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
+    export AI_DB_PY_PATH="${../../scripts/data/ai-db.py}"
+    exec bash "${../../scripts/data/ai-db.sh}" "$@"
+  '';
+
+  ai-config = pkgs.writeShellScriptBin "ai-config" ''
+    exec bash "${../../scripts/ai-config.sh}" "$@"
   '';
 
   ai-help = pkgs.writeShellScriptBin "ai-help" ''
@@ -630,6 +645,8 @@ in
     ai-duck
     ai-slide-copy
     ai-organize
+    ai-db
+    ai-config
     ai-help
   ];
 }

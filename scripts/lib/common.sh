@@ -180,6 +180,41 @@ strip_think_blocks() {
   '
 }
 
+# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+
+pipeline_post() {
+  # Usage: pipeline_post TOOL QUERY ANSWER
+  #
+  # Runs the post-generation pipeline (verification + feedback logging) and
+  # prints the JSON result.  Returns non-zero only on hard failure.
+  #
+  # Requires: uv, python3, pipeline_post.py on AI_LIB_PATH.
+  local tool="$1" query="$2" answer="$3"
+
+  # Locate lib directory (Nix wrapper sets AI_LIB_PATH; fallback to co-located)
+  local lib_dir="${AI_LIB_PATH:-$_COMMON_DIR}"
+  local post_py="$lib_dir/pipeline_post.py"
+
+  if [ ! -f "$post_py" ]; then
+    echo '{"verified":true,"confidence":1.0,"issues":[],"exemplar":null}'
+    return 0
+  fi
+
+  # Build JSON payload safely via python, then pipe to pipeline_post
+  local json_payload
+  json_payload=$(TOOL="$tool" QUERY="$query" ANSWER="$answer" python3 -c "
+import json, os
+print(json.dumps({
+    'tool': os.environ['TOOL'],
+    'query': os.environ['QUERY'],
+    'answer': os.environ['ANSWER'],
+}))
+")
+
+  printf '%s' "$json_payload" | uv run "$post_py" 2>/dev/null || \
+    echo '{"verified":true,"confidence":1.0,"issues":[],"exemplar":null}'
+}
+
 # ── Terminal width ───────────────────────────────────────────────────────────
 
 term_width() {

@@ -116,6 +116,9 @@ if [ -z "$PR_TEXT" ]; then
   exit 1
 fi
 
+# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+POST_RESULT=$(pipeline_post "ai-pr" "$COMMITS" "$PR_TEXT")
+
 # ── Parse title / body ─────────────────────────────────────────────────────────
 PR_TITLE=$(printf '%s' "$PR_TEXT" | grep '^TITLE:' | head -1 | sed 's/^TITLE:[[:space:]]*//')
 PR_BODY=$(printf '%s' "$PR_TEXT" | grep -v '^TITLE:' | sed '1{/^[[:space:]]*$/d}')

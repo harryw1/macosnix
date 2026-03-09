@@ -94,6 +94,9 @@ if [ -z "$COMMIT_MSG" ]; then
   exit 1
 fi
 
+# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+POST_RESULT=$(pipeline_post "ai-commit" "$STATUS" "$COMMIT_MSG")
+
 # ── Display proposed message ───────────────────────────────────────────────────
 TERM_WIDTH=$(term_width)
 echo ""

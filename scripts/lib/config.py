@@ -51,6 +51,25 @@ DEFAULTS: dict[str, dict[str, Any]] = {
         "hdbscan_min_cluster": 3,
         "composite_alpha": 0.65,
     },
+    "retrieval": {
+        "bm25_enabled": True,
+        "rrf_k": 60,
+        "rerank_enabled": True,
+        "rerank_candidates": 15,
+        "utility_weight": 0.15,
+    },
+    "verification": {
+        "enabled": True,
+        "retry_on_failure": False,
+        "confidence_floor": 0.6,
+    },
+    "learning": {
+        "enabled": True,
+        "alpha": 0.3,
+        "decay_halflife_days": 30,
+        "exemplar_threshold": 0.85,
+        "max_exemplars_per_tool": 50,
+    },
 }
 
 # ── Env-var overrides ─────────────────────────────────────────────────────────

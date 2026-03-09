@@ -107,6 +107,14 @@ if [ -z "$EXPLANATION" ]; then
   exit 1
 fi
 
+# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+POST_RESULT=$(pipeline_post "ai-explain" "$CMD_INPUT" "$EXPLANATION")
+POST_VERIFIED=$(printf '%s' "$POST_RESULT" | python3 -c "
+import json, sys
+d = json.loads(sys.stdin.read())
+print('true' if d.get('verified', True) else 'false')
+" 2>/dev/null || echo "true")
+
 echo ""
 TERM_WIDTH=$(term_width)
 
@@ -114,4 +122,9 @@ gum style \
   --width "$TERM_WIDTH" \
   --border rounded --padding "1 2" \
   "$EXPLANATION"
+
+if [ "$POST_VERIFIED" = "false" ]; then
+  gum style --foreground 214 \
+    "⚠  Verification: some claims could not be fully verified."
+fi
 echo ""

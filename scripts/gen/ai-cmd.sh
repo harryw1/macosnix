@@ -100,6 +100,14 @@ if [ -z "$CMD" ]; then
   exit 1
 fi
 
+# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+POST_RESULT=$(pipeline_post "ai-cmd" "$QUERY" "$CMD")
+POST_VERIFIED=$(printf '%s' "$POST_RESULT" | python3 -c "
+import json, sys
+d = json.loads(sys.stdin.read())
+print('true' if d.get('verified', True) else 'false')
+" 2>/dev/null || echo "true")
+
 # ── Display proposed command ───────────────────────────────────────────────────
 echo ""
 TERM_WIDTH=$(term_width)
@@ -108,6 +116,11 @@ gum style \
   --width "$TERM_WIDTH" \
   --border double --padding "1 2" \
   "$(printf '󰆍  %s' "$CMD")"
+
+if [ "$POST_VERIFIED" = "false" ]; then
+  gum style --foreground 214 \
+    "⚠  Verification: some claims could not be fully verified."
+fi
 echo ""
 
 # ── Action menu ────────────────────────────────────────────────────────────────

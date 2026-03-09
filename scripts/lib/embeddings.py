@@ -15,6 +15,7 @@ import os
 import sqlite3
 import struct
 import sys
+import time
 from pathlib import Path
 
 import sqlite_vec
@@ -22,15 +23,24 @@ import sqlite_vec
 # ── Import Ollama client ──────────────────────────────────────────────────────
 from ollama import embed as _ollama_embed, CHAT_MODEL, EMBED_MODEL  # noqa: F401
 
+# ── Import config for pipeline settings ───────────────────────────────────────
+from config import get as _cfg
+
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 XDG_DATA_HOME = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
 APP_DIR = Path(XDG_DATA_HOME) / "ai-search"
 DB_PATH = APP_DIR / "vectors.db"
+FEEDBACK_DB_PATH = APP_DIR / "feedback.db"
 
 EMBED_DIM = 1024
 CHUNK_SIZE = 4000
 OVERLAP = 200
+
+# ── Hybrid Retrieval Constants ────────────────────────────────────────────────
+RRF_K = int(_cfg("retrieval", "rrf_k", 60))
+BM25_ENABLED = _cfg("retrieval", "bm25_enabled", True)
+UTILITY_WEIGHT = float(_cfg("retrieval", "utility_weight", 0.15))
 
 # Pure-text extensions that mimetypes might miss.
 # Consumers can extend this set (ai-organize adds .xml, .ini, etc.).
@@ -82,6 +92,63 @@ def init_db(db_path: Path | None = None) -> sqlite3.Connection:
         conn.execute("SELECT chunk_text FROM file_metadata LIMIT 0")
     except sqlite3.OperationalError:
         conn.execute("ALTER TABLE file_metadata ADD COLUMN chunk_text TEXT NOT NULL DEFAULT ''")
+
+    # ── FTS5 full-text index for hybrid BM25 + vector search ─────────────
+    conn.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS file_chunks_fts USING fts5(
+            chunk_text,
+            content='file_metadata',
+            content_rowid='rowid'
+        )
+    """)
+
+    # Triggers to keep FTS5 in sync with file_metadata inserts/deletes.
+    # "IF NOT EXISTS" isn't supported for triggers, so use try/except.
+    try:
+        conn.execute("""
+            CREATE TRIGGER file_metadata_ai AFTER INSERT ON file_metadata BEGIN
+                INSERT INTO file_chunks_fts(rowid, chunk_text)
+                VALUES (new.rowid, new.chunk_text);
+            END
+        """)
+    except sqlite3.OperationalError:
+        pass  # trigger already exists
+
+    try:
+        conn.execute("""
+            CREATE TRIGGER file_metadata_ad AFTER DELETE ON file_metadata BEGIN
+                INSERT INTO file_chunks_fts(file_chunks_fts, rowid, chunk_text)
+                VALUES ('delete', old.rowid, old.chunk_text);
+            END
+        """)
+    except sqlite3.OperationalError:
+        pass  # trigger already exists
+
+    try:
+        conn.execute("""
+            CREATE TRIGGER file_metadata_au AFTER UPDATE ON file_metadata BEGIN
+                INSERT INTO file_chunks_fts(file_chunks_fts, rowid, chunk_text)
+                VALUES ('delete', old.rowid, old.chunk_text);
+                INSERT INTO file_chunks_fts(rowid, chunk_text)
+                VALUES (new.rowid, new.chunk_text);
+            END
+        """)
+    except sqlite3.OperationalError:
+        pass  # trigger already exists
+
+    # Rebuild the FTS index on first migration (populates from existing data).
+    # This is a no-op if the FTS table already has content.
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM file_chunks_fts")
+        fts_count = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM file_metadata")
+        meta_count = cur.fetchone()[0]
+        if meta_count > 0 and fts_count == 0:
+            conn.execute("INSERT INTO file_chunks_fts(file_chunks_fts) VALUES('rebuild')")
+            print("FTS5 index rebuilt from existing data.", file=sys.stderr)
+    except sqlite3.OperationalError:
+        pass  # vec0 table might confuse COUNT in some edge cases
 
     return conn
 
@@ -352,6 +419,172 @@ def check_dir_indexed(conn: sqlite3.Connection, directory: str) -> bool:
 
 # ── Retrieval ─────────────────────────────────────────────────────────────────
 
+def _vector_search(
+    conn: sqlite3.Connection,
+    query_vec_bytes: bytes,
+    *,
+    top_k: int = 15,
+    max_distance: float = 0.8,
+    scope: str | None = None,
+) -> list[dict]:
+    """Raw vector search — returns ranked results with rowid for RRF fusion."""
+    cur = conn.cursor()
+    fetch_limit = top_k * 4 if scope else top_k
+    scope_prefix = (scope.rstrip("/") + "/") if scope else None
+
+    try:
+        cur.execute("""
+            SELECT
+                m.rowid,
+                m.filepath,
+                m.snippet,
+                COALESCE(m.chunk_text, m.snippet) AS chunk_text,
+                vec_distance_cosine(e.embedding, ?) AS distance
+            FROM file_embeddings e
+            JOIN file_metadata m ON e.rowid = m.rowid
+            ORDER BY distance ASC
+            LIMIT ?
+        """, (query_vec_bytes, fetch_limit))
+        rows = cur.fetchall()
+    except sqlite3.OperationalError as e:
+        print(json.dumps({"error": f"Vector search failed: {e}"}))
+        return []
+
+    results = []
+    for rowid, filepath, snippet, chunk_text, dist in rows:
+        if dist > max_distance:
+            continue
+        if scope_prefix and not filepath.startswith(scope_prefix):
+            continue
+        score = round(max(0.0, 1.0 - dist), 4)
+        results.append({
+            "rowid": rowid,
+            "filepath": filepath,
+            "snippet": snippet,
+            "chunk_text": chunk_text,
+            "score": score,
+            "distance": dist,
+        })
+        if len(results) >= top_k:
+            break
+
+    return results
+
+
+def bm25_search(
+    conn: sqlite3.Connection,
+    query: str,
+    *,
+    top_k: int = 20,
+    scope: str | None = None,
+) -> list[dict]:
+    """Keyword search over chunk_text using SQLite FTS5 BM25 ranking.
+
+    Returns results with rowid for RRF fusion.  Gracefully returns [] if the
+    FTS5 table doesn't exist or the query has no keyword matches.
+    """
+    scope_prefix = (scope.rstrip("/") + "/") if scope else None
+
+    # FTS5 MATCH requires at least one indexable term.  Sanitise the query
+    # to avoid syntax errors from stray quotes or operators.
+    fts_query = _sanitize_fts_query(query)
+    if not fts_query:
+        return []
+
+    cur = conn.cursor()
+    try:
+        if scope_prefix:
+            cur.execute("""
+                SELECT m.rowid, m.filepath, m.snippet,
+                       COALESCE(m.chunk_text, m.snippet) AS chunk_text,
+                       rank
+                FROM file_chunks_fts fts
+                JOIN file_metadata m ON fts.rowid = m.rowid
+                WHERE file_chunks_fts MATCH ?
+                  AND m.filepath LIKE ?
+                ORDER BY rank
+                LIMIT ?
+            """, (fts_query, scope_prefix + "%", top_k))
+        else:
+            cur.execute("""
+                SELECT m.rowid, m.filepath, m.snippet,
+                       COALESCE(m.chunk_text, m.snippet) AS chunk_text,
+                       rank
+                FROM file_chunks_fts fts
+                JOIN file_metadata m ON fts.rowid = m.rowid
+                WHERE file_chunks_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """, (fts_query, top_k))
+
+        return [
+            {
+                "rowid": r[0],
+                "filepath": r[1],
+                "snippet": r[2],
+                "chunk_text": r[3],
+                "bm25_rank": i + 1,
+                "score": 0.0,  # placeholder; RRF will assign the real score
+            }
+            for i, r in enumerate(cur.fetchall())
+        ]
+    except sqlite3.OperationalError:
+        # FTS5 table might not exist yet (read-only open_db path)
+        return []
+
+
+def _sanitize_fts_query(query: str) -> str:
+    """Turn a user query into a safe FTS5 MATCH expression.
+
+    Strips FTS5 operators and wraps each word in quotes so that literal
+    terms are matched without triggering syntax errors.
+    """
+    import re as _re
+    # Remove FTS5 special chars: AND, OR, NOT, quotes, parens, colons, *, ^
+    words = _re.findall(r"[a-zA-Z0-9_./-]+", query)
+    if not words:
+        return ""
+    # Join as implicit OR by quoting each term
+    return " OR ".join(f'"{w}"' for w in words)
+
+
+def reciprocal_rank_fusion(
+    vec_results: list[dict],
+    bm25_results: list[dict],
+    utility_scores: dict[int, float] | None = None,
+    *,
+    k: int = RRF_K,
+    utility_weight: float = UTILITY_WEIGHT,
+) -> list[dict]:
+    """Fuse vector and BM25 ranked lists using Reciprocal Rank Fusion.
+
+    Each result dict must have a ``rowid`` key (used for dedup across the two
+    lists).  When *utility_scores* is provided, each chunk's accumulated
+    utility EMA is blended in as a third ranking signal.
+    """
+    scores: dict[int, float] = {}
+    lookup: dict[int, dict] = {}
+
+    for i, r in enumerate(vec_results):
+        rid = r["rowid"]
+        scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + i + 1)
+        lookup[rid] = r
+
+    for i, r in enumerate(bm25_results):
+        rid = r["rowid"]
+        scores[rid] = scores.get(rid, 0.0) + 1.0 / (k + i + 1)
+        lookup.setdefault(rid, r)
+
+    # Blend in learned utility scores from the feedback store
+    if utility_scores:
+        for rid, ema in utility_scores.items():
+            if rid in scores:
+                scores[rid] += utility_weight * ema
+
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return [lookup[rid] for rid, _ in ranked]
+
+
 def search(
     conn: sqlite3.Connection,
     query: str,
@@ -404,7 +637,11 @@ def retrieve_with_chunks(
 ) -> list[dict]:
     """Retrieve top-K chunks with full chunk_text for RAG context injection.
 
-    Each dict has keys: filepath, snippet, chunk_text, score.
+    Uses hybrid BM25 + vector search with Reciprocal Rank Fusion when
+    BM25 is enabled (default).  Falls back to pure vector search when
+    BM25 is disabled or the FTS5 table is unavailable.
+
+    Each dict has keys: rowid, filepath, snippet, chunk_text, score.
     Used by ai-chat for grounded generation.
     """
     embedding = get_embedding(query, timeout=embed_timeout)
@@ -412,45 +649,64 @@ def retrieve_with_chunks(
         return []
 
     vec_bytes = vec_to_bytes(embedding)
-    cur = conn.cursor()
+    widen_k = top_k * 3
 
-    fetch_limit = top_k * 4 if scope else top_k
-    scope_prefix = (scope.rstrip("/") + "/") if scope else None
+    # ── Vector search (always runs) ──────────────────────────────────────
+    vec_results = _vector_search(
+        conn, vec_bytes, top_k=widen_k,
+        max_distance=max_distance, scope=scope,
+    )
+
+    # ── BM25 search (hybrid path, when enabled) ─────────────────────────
+    if BM25_ENABLED:
+        bm25_results = bm25_search(conn, query, top_k=widen_k, scope=scope)
+    else:
+        bm25_results = []
+
+    # ── Load utility scores from feedback store (if available) ───────────
+    utility = _load_utility_scores()
+
+    if bm25_results or utility:
+        fused = reciprocal_rank_fusion(vec_results, bm25_results, utility)
+    else:
+        fused = vec_results
+
+    return fused[:top_k]
+
+
+def _load_utility_scores() -> dict[int, float] | None:
+    """Load chunk utility scores from the feedback DB with temporal decay.
+
+    Returns None if the feedback DB doesn't exist or has no data.
+    This is a read-only operation — safe to call from any context.
+    """
+    if not FEEDBACK_DB_PATH.exists():
+        return None
+
+    decay_halflife = float(_cfg("learning", "decay_halflife_days", 30))
+    now = time.time()
 
     try:
-        cur.execute("""
-            SELECT
-                m.filepath,
-                m.snippet,
-                COALESCE(m.chunk_text, m.snippet) AS chunk_text,
-                vec_distance_cosine(e.embedding, ?) AS distance
-            FROM file_embeddings e
-            JOIN file_metadata m ON e.rowid = m.rowid
-            ORDER BY distance ASC
-            LIMIT ?
-        """, (vec_bytes, fetch_limit))
+        fconn = sqlite3.connect(FEEDBACK_DB_PATH)
+        cur = fconn.cursor()
+        cur.execute("SELECT chunk_rowid, utility_ema, last_used FROM chunk_utility")
         rows = cur.fetchall()
-    except sqlite3.OperationalError as e:
-        print(json.dumps({"error": f"DB query failed: {e}"}))
-        sys.exit(1)
+        fconn.close()
+    except sqlite3.OperationalError:
+        return None
 
-    results = []
-    for filepath, snippet, chunk_text, dist in rows:
-        if dist > max_distance:
-            continue
-        if scope_prefix and not filepath.startswith(scope_prefix):
-            continue
-        score = round(max(0.0, 1.0 - dist), 4)
-        results.append({
-            "filepath": filepath,
-            "snippet": snippet,
-            "chunk_text": chunk_text,
-            "score": score,
-        })
-        if len(results) >= top_k:
-            break
+    if not rows:
+        return None
 
-    return results
+    scores: dict[int, float] = {}
+    for rid, ema, last_used in rows:
+        age_days = (now - last_used) / 86400
+        decay = 0.5 ** (age_days / decay_halflife) if decay_halflife > 0 else 1.0
+        # Decay toward neutral (0.5), not toward zero
+        decayed = 0.5 + (ema - 0.5) * decay
+        scores[rid] = decayed
+
+    return scores
 
 
 # ── Cache Helpers (for ai-organize) ──────────────────────────────────────────
