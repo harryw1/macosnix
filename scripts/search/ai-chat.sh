@@ -10,22 +10,12 @@
 #   ai-chat              # interactive prompt via gum
 set -euo pipefail
 
-# ── Portable clipboard ────────────────────────────────────────────────────────
-_clip_copy() {
-  if command -v pbcopy >/dev/null 2>&1; then
-    pbcopy
-  elif command -v xclip >/dev/null 2>&1; then
-    xclip -selection clipboard
-  elif command -v wl-copy >/dev/null 2>&1; then
-    wl-copy
-  else
-    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
-    return 1
-  fi
-}
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
 
-EMBED_MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:0.6b}"
-CHAT_MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+EMBED_MODEL="${OLLAMA_MODEL_EMBED:-$(load_config_value models embed "qwen3-embedding:0.6b")}"
+CHAT_MODEL="${OLLAMA_MODEL:-$(load_config_value models chat "qwen3.5:9b")}"
 # ── Help ─────────────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
@@ -49,9 +39,8 @@ XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 DB_PATH="$XDG_DATA_HOME/ai-search/vectors.db"
 
 # Python script paths — overridden by Nix wrapper via env vars
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-PY_SCRIPT="${AI_CHAT_PY_PATH:-$DIR/ai-chat.py}"
-SEARCH_PY="${AI_SEARCH_PY_PATH:-$DIR/ai-search.py}"
+PY_SCRIPT="${AI_CHAT_PY_PATH:-$SCRIPT_DIR/ai-chat.py}"
+SEARCH_PY="${AI_SEARCH_PY_PATH:-$SCRIPT_DIR/ai-search.py}"
 
 # ── Gather query ───────────────────────────────────────────────────────────────
 QUERY=""
@@ -70,23 +59,7 @@ if [ -z "$QUERY" ]; then
 fi
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
-if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "󰚩 Starting Ollama..."
-  open -a Ollama
-  echo -n "Waiting for Ollama"
-  _tries=0
-  while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-    sleep 1
-    echo -n "."
-    _tries=$((_tries + 1))
-    if [ "$_tries" -ge 30 ]; then
-      echo ""
-      echo " Ollama failed to start after 30 s. Is the app installed?"
-      exit 1
-    fi
-  done
-  echo " ready!"
-fi
+ensure_ollama
 
 # ── Guard: database must exist ─────────────────────────────────────────────────
 if [ ! -f "$DB_PATH" ]; then
@@ -173,9 +146,7 @@ fi
 
 # ── Display answer ─────────────────────────────────────────────────────────────
 echo ""
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then TERM_WIDTH=80; fi
-[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
+TERM_WIDTH=$(term_width)
 
 gum style \
   --width "$TERM_WIDTH" \
@@ -223,7 +194,7 @@ case "$ACTION" in
   exec bash "${BASH_SOURCE[0]}"
   ;;
 "󰆏  Copy answer to clipboard")
-  printf '%s' "$ANSWER" | _clip_copy
+  printf '%s' "$ANSWER" | clip_copy
   gum style "  Copied to clipboard!"
   ;;
 "  Abort")

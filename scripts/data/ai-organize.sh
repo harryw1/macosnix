@@ -12,11 +12,14 @@
 #   ai-organize ~/Downloads --top-level     # Only consider files at root (non-recursive)
 set -euo pipefail
 
-MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
-EMBED_MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:0.6b}"
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-PY_SCRIPT="${AI_ORGANIZE_PY_PATH:-$DIR/ai-organize.py}"
+MODEL="${OLLAMA_MODEL:-$(load_config_value models chat "qwen3.5:9b")}"
+EMBED_MODEL="${OLLAMA_MODEL_EMBED:-$(load_config_value models embed "qwen3-embedding:0.6b")}"
+
+PY_SCRIPT="${AI_ORGANIZE_PY_PATH:-$SCRIPT_DIR/ai-organize.py}"
 
 # ── Parse arguments ────────────────────────────────────────────────────────────
 TARGET_DIR=""
@@ -92,32 +95,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Ensure Ollama is running ────────────────────────────────────────────────────
-ensure_ollama() {
-  if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-    echo "󰚩 Starting Ollama..."
-    open -a Ollama
-    echo -n "  Waiting for Ollama"
-    _tries=0
-    while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-      sleep 1
-      echo -n "."
-      _tries=$((_tries + 1))
-      if [ "$_tries" -ge 30 ]; then
-        echo ""
-        echo " Ollama failed to start after 30 s. Is the app installed?"
-        exit 1
-      fi
-    done
-    echo " ready!"
-  fi
-
-  if ! curl -s http://localhost:11434/api/tags | grep -q "\"$MODEL\""; then
-    echo " Chat model '$MODEL' not found. Run: ollama pull $MODEL"
-    exit 1
-  fi
-}
-
 # ── Interactive prompts (only when not fully specified via flags) ───────────────
 echo ""
 gum style --bold --border rounded --padding "0 1" "󰉓  ai-organize"
@@ -177,7 +154,7 @@ $DO_DEDUPE && PY_FLAGS="$PY_FLAGS --dedupe"
 $DO_TOP_LEVEL && PY_FLAGS="$PY_FLAGS --top-level"
 $DO_ALL_FILES && PY_FLAGS="$PY_FLAGS --all-files"
 
-ensure_ollama
+ensure_ollama "$MODEL"
 
 echo ""
 gum log --level info "Analyzing: $(basename "$TARGET_DIR")"

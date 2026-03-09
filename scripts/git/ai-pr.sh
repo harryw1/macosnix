@@ -4,21 +4,11 @@
 # `ai-pr` / `aipr` command.
 set -euo pipefail
 
-# ── Portable clipboard ────────────────────────────────────────────────────────
-_clip_copy() {
-  if command -v pbcopy >/dev/null 2>&1; then
-    pbcopy
-  elif command -v xclip >/dev/null 2>&1; then
-    xclip -selection clipboard
-  elif command -v wl-copy >/dev/null 2>&1; then
-    wl-copy
-  else
-    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
-    return 1
-  fi
-}
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
 
-MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+MODEL="${OLLAMA_MODEL:-$(load_config_value models chat "qwen3.5:9b")}"
 # ── Help ─────────────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
@@ -36,7 +26,7 @@ fi
 
 # ── Guard: must be inside a git repo ──────────────────────────────────────────
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
-  echo " Not inside a git repository."
+  echo " Not inside a git repository."
   exit 1
 fi
 
@@ -60,14 +50,14 @@ if [ -z "$BASE_BRANCH" ]; then
 fi
 
 if [ -z "$BASE_BRANCH" ]; then
-  echo " Could not determine base branch. Override with: AIPR_BASE=main aipr"
+  echo " Could not determine base branch. Override with: AIPR_BASE=main aipr"
   exit 1
 fi
 
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
 if [ "$CURRENT_BRANCH" = "$BASE_BRANCH" ]; then
-  echo " Already on base branch ($BASE_BRANCH). Checkout a feature branch first."
+  echo " Already on base branch ($BASE_BRANCH). Checkout a feature branch first."
   exit 1
 fi
 
@@ -75,36 +65,17 @@ fi
 COMMITS=$(git log --oneline "${BASE_BRANCH}..HEAD" 2>/dev/null || true)
 
 if [ -z "$COMMITS" ]; then
-  echo " No commits found between $BASE_BRANCH and $CURRENT_BRANCH."
+  echo " No commits found between $BASE_BRANCH and $CURRENT_BRANCH."
   exit 1
 fi
 
 DIFF=$(git diff "${BASE_BRANCH}...HEAD" 2>/dev/null | head -c 12000 || true)
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
-if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "󰚩 Starting Ollama..."
-  open -a Ollama
-  echo -n "Waiting for Ollama"
-  _tries=0
-  while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-    sleep 1
-    echo -n "."
-    _tries=$((_tries + 1))
-    if [ "$_tries" -ge 30 ]; then
-      echo ""
-      echo " Ollama failed to start after 30 s. Is the app installed?"
-      exit 1
-    fi
-  done
-  echo " ready!"
-fi
+ensure_ollama
 
 # ── Build prompt ───────────────────────────────────────────────────────────────
-PROMPT_FILE=$(mktemp)
-MSG_FILE=$(mktemp)
-PAYLOAD_FILE=$(mktemp)
-trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
+make_tempfiles PROMPT_FILE
 
 printf '%s\n' \
   "You write concise, high-quality GitHub Pull Request descriptions." \
@@ -133,57 +104,15 @@ printf '%s\n' \
   "$DIFF" \
   >"$PROMPT_FILE"
 
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-python3 -c "
-import json, os
-with open(os.environ['PROMPT_FILE']) as f:
-    prompt = f.read()
-payload = {
-    'model': os.environ['MODEL'],
-    'prompt': prompt,
-    'stream': False,
-    'think': False,
-    'options': {
-        'temperature': 0.2,
-        'num_predict': 500,
-        'num_ctx': 6144,
-    }
-}
-print(json.dumps(payload))
-" >"$PAYLOAD_FILE"
-
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-gum spin --title "󰚩  Generating PR description with $MODEL..." -- \
-  sh -c 'curl -s http://localhost:11434/api/generate \
-    -H "Content-Type: application/json" \
-    -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
-
-RAW=$(python3 -c "
-import json, os, sys
-try:
-    with open(os.environ['MSG_FILE']) as f:
-        d = json.load(f)
-    if 'error' in d:
-        print('Ollama error: ' + d['error'], file=sys.stderr)
-    print(d.get('response', ''))
-except Exception as e:
-    with open(os.environ['MSG_FILE']) as f:
-        raw = f.read()[:200]
-    print(f'Failed to parse Ollama response: {e}', file=sys.stderr)
-    if raw:
-        print(f'Raw response: {raw}', file=sys.stderr)
-" 2>&1 || true)
+RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
+  --temperature 0.2 --num_predict 500 --num_ctx 6144 \
+  --spinner "󰚩  Generating PR description with $MODEL...")
 
 # Strip any <think>…</think> blocks the model might emit
-PR_TEXT=$(printf '%s' "$RAW" | awk '
-    /<think>/          { xml=1 }
-    xml && /<\/think>/ { xml=0; next }
-    xml                { next }
-    { print }
-  ')
+PR_TEXT=$(printf '%s' "$RAW" | strip_think_blocks)
 
 if [ -z "$PR_TEXT" ]; then
-  echo " No description generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
+  echo " No description generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
   exit 1
 fi
 
@@ -199,11 +128,7 @@ fi
 
 # ── Display proposed description ──────────────────────────────────────────────
 echo ""
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then
-  TERM_WIDTH=80
-fi
-[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
+TERM_WIDTH=$(term_width)
 
 gum style \
   --width "$TERM_WIDTH" \
@@ -214,14 +139,14 @@ echo ""
 # ── Action menu ────────────────────────────────────────────────────────────────
 ACTION=$(gum choose \
   --header "What would you like to do?" \
-  "  Push & open PR with gh" \
+  "  Push & open PR with gh" \
   "󰆏  Copy to clipboard" \
   "󰏫  Edit then open PR" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort")
 
 case "$ACTION" in
-"  Push & open PR with gh")
+"  Push & open PR with gh")
   if ! git push -u origin "$CURRENT_BRANCH"; then
     echo " Push failed. Check your remote configuration and try again."
     exit 1
@@ -229,8 +154,8 @@ case "$ACTION" in
   gh pr create --title "$PR_TITLE" --body "$PR_BODY"
   ;;
 "󰆏  Copy to clipboard")
-  printf 'Title: %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | _clip_copy
-  gum style "  Copied to clipboard!"
+  printf 'Title: %s\n\n%s\n' "$PR_TITLE" "$PR_BODY" | clip_copy
+  gum style "  Copied to clipboard!"
   ;;
 "󰏫  Edit then open PR")
   TMPFILE=$(mktemp)
@@ -252,7 +177,7 @@ case "$ACTION" in
 "󰑐  Regenerate")
   exec bash "${BASH_SOURCE[0]}"
   ;;
-"  Abort")
+"  Abort")
   echo "Aborted."
   exit 0
   ;;

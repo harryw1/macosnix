@@ -8,21 +8,11 @@
 #   ai-duck report.parquet "monthly totals" # works with Parquet, JSON, TSV too
 set -euo pipefail
 
-# ── Portable clipboard ────────────────────────────────────────────────────────
-_clip_copy() {
-  if command -v pbcopy >/dev/null 2>&1; then
-    pbcopy
-  elif command -v xclip >/dev/null 2>&1; then
-    xclip -selection clipboard
-  elif command -v wl-copy >/dev/null 2>&1; then
-    wl-copy
-  else
-    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
-    return 1
-  fi
-}
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
 
-MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+MODEL="${OLLAMA_MODEL:-$(load_config_value models chat "qwen3.5:9b")}"
 # ── Help ─────────────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
@@ -96,29 +86,10 @@ fi
 SAMPLE=$(duckdb -c "SELECT * FROM '$FILE_ABS' LIMIT 5;" 2>/dev/null || true)
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
-if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "󰚩 Starting Ollama..."
-  open -a Ollama
-  echo -n "Waiting for Ollama"
-  _tries=0
-  while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-    sleep 1
-    echo -n "."
-    _tries=$((_tries + 1))
-    if [ "$_tries" -ge 30 ]; then
-      echo ""
-      echo " Ollama failed to start after 30 s. Is the app installed?"
-      exit 1
-    fi
-  done
-  echo " ready!"
-fi
+ensure_ollama
 
 # ── Build prompt ───────────────────────────────────────────────────────────────
-PROMPT_FILE=$(mktemp)
-MSG_FILE=$(mktemp)
-PAYLOAD_FILE=$(mktemp)
-trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
+make_tempfiles PROMPT_FILE
 
 printf '%s\n' \
   "You are a DuckDB SQL expert. Write a single DuckDB SQL query to answer the question below." \
@@ -148,53 +119,12 @@ printf '%s\n' \
   "$QUESTION" \
   >"$PROMPT_FILE"
 
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-python3 -c "
-import json, os
-with open(os.environ['PROMPT_FILE']) as f:
-    prompt = f.read()
-payload = {
-    'model': os.environ['MODEL'],
-    'prompt': prompt,
-    'stream': False,
-    'think': False,
-    'options': {
-        'temperature': 0.1,
-        'num_predict': 300,
-        'num_ctx': 6144,
-    }
-}
-print(json.dumps(payload))
-" >"$PAYLOAD_FILE"
-
-gum spin --title "󰚩  Generating query with $MODEL..." -- \
-  sh -c 'curl -s http://localhost:11434/api/generate \
-    -H "Content-Type: application/json" \
-    -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
-
-RAW=$(python3 -c "
-import json, os, sys
-try:
-    with open(os.environ['MSG_FILE']) as f:
-        d = json.load(f)
-    if 'error' in d:
-        print('Ollama error: ' + d['error'], file=sys.stderr)
-    print(d.get('response', ''))
-except Exception as e:
-    with open(os.environ['MSG_FILE']) as f:
-        raw = f.read()[:200]
-    print(f'Failed to parse Ollama response: {e}', file=sys.stderr)
-    if raw:
-        print(f'Raw response: {raw}', file=sys.stderr)
-" 2>&1 || true)
+RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
+  --temperature 0.1 --num_predict 300 --num_ctx 6144 \
+  --spinner "󰚩  Generating query with $MODEL...")
 
 # Strip any <think>…</think> blocks
-CLEAN=$(printf '%s' "$RAW" | awk '
-    /<think>/          { xml=1 }
-    xml && /<\/think>/ { xml=0; next }
-    xml                { next }
-    { print }
-  ')
+CLEAN=$(printf '%s' "$RAW" | strip_think_blocks)
 
 # Extract query from QUERY: prefix, fallback to first non-blank line
 SQL=$(printf '%s' "$CLEAN" | grep '^QUERY:' | head -1 | sed 's/^QUERY:[[:space:]]*//')
@@ -217,9 +147,7 @@ fi
 
 # ── Display proposed query ─────────────────────────────────────────────────────
 echo ""
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then TERM_WIDTH=80; fi
-[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
+TERM_WIDTH=$(term_width)
 
 gum style \
   --width "$TERM_WIDTH" \
@@ -254,7 +182,7 @@ run_query() {
 
   case "$POST" in
   "󰆏  Copy results to clipboard")
-    printf '%s' "$RESULTS" | _clip_copy
+    printf '%s' "$RESULTS" | clip_copy
     gum style "  Copied to clipboard!"
     ;;
   "󰈙  Save results to CSV")

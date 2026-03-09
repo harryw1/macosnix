@@ -8,21 +8,11 @@
 #   ai-slide-copy report.txt                  # pass a text/CSV file path directly
 set -euo pipefail
 
-# ── Portable clipboard ────────────────────────────────────────────────────────
-_clip_copy() {
-  if command -v pbcopy >/dev/null 2>&1; then
-    pbcopy
-  elif command -v xclip >/dev/null 2>&1; then
-    xclip -selection clipboard
-  elif command -v wl-copy >/dev/null 2>&1; then
-    wl-copy
-  else
-    echo " No clipboard tool found (pbcopy, xclip, or wl-copy)." >&2
-    return 1
-  fi
-}
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
 
-MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+MODEL="${OLLAMA_MODEL:-$(load_config_value models chat "qwen3.5:9b")}"
 # ── Help ─────────────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
@@ -84,29 +74,10 @@ STYLE=$(gum choose \
   "Technical — detailed, precise")
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
-if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "󰚩 Starting Ollama..."
-  open -a Ollama
-  echo -n "Waiting for Ollama"
-  _tries=0
-  while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-    sleep 1
-    echo -n "."
-    _tries=$((_tries + 1))
-    if [ "$_tries" -ge 30 ]; then
-      echo ""
-      echo " Ollama failed to start after 30 s. Is the app installed?"
-      exit 1
-    fi
-  done
-  echo " ready!"
-fi
+ensure_ollama
 
 # ── Build prompt ───────────────────────────────────────────────────────────────
-PROMPT_FILE=$(mktemp)
-MSG_FILE=$(mktemp)
-PAYLOAD_FILE=$(mktemp)
-trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
+make_tempfiles PROMPT_FILE
 
 # Resolve number of slides
 case "$NUM_SLIDES" in
@@ -168,44 +139,12 @@ printf '%s\n' \
   "--- end data ---" \
   >"$PROMPT_FILE"
 
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-python3 -c "
-import json, os
-with open(os.environ['PROMPT_FILE']) as f:
-    prompt = f.read()
-payload = {
-    'model': os.environ['MODEL'],
-    'prompt': prompt,
-    'stream': False,
-    'think': False,
-    'options': {
-        'temperature': 0.4,
-        'num_predict': 1000,
-        'num_ctx': 8192,
-    }
-}
-print(json.dumps(payload))
-" >"$PAYLOAD_FILE"
+RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
+  --temperature 0.4 --num_predict 1000 --num_ctx 8192 \
+  --spinner "󰚩  Generating slide content with $MODEL...")
 
-gum spin --title "󰚩  Generating slide content with $MODEL..." -- \
-  sh -c 'curl -s http://localhost:11434/api/generate \
-    -H "Content-Type: application/json" \
-    -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
-
-SLIDES=$(python3 -c "
-import json, os, re, sys
-try:
-    with open(os.environ['MSG_FILE']) as f:
-        d = json.load(f)
-    resp = d.get('response', '')
-    cleaned = re.sub(r'<think>.*?</think>', '', resp, flags=re.DOTALL).strip()
-    if not cleaned:
-        cleaned = resp.strip()
-    print(cleaned)
-except Exception as e:
-    print(f'Error parsing response: {e}', file=sys.stderr)
-    sys.exit(1)
-" 2>&1 || true)
+SLIDES=$(printf '%s' "$RAW" | strip_think_blocks)
+[ -z "$SLIDES" ] && SLIDES="$RAW"
 
 if [ -z "$SLIDES" ]; then
   echo " No content generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
@@ -214,9 +153,7 @@ fi
 
 # ── Display result ─────────────────────────────────────────────────────────────
 echo ""
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then TERM_WIDTH=80; fi
-[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
+TERM_WIDTH=$(term_width)
 
 gum style \
   --width "$TERM_WIDTH" \
@@ -235,7 +172,7 @@ ACTION=$(gum choose \
 
 case "$ACTION" in
 "󰆏  Copy all to clipboard")
-  printf '%s' "$SLIDES" | _clip_copy
+  printf '%s' "$SLIDES" | clip_copy
   gum style "  Copied to clipboard — paste into your deck!"
   ;;
 "󰏫  Review and edit, then copy")
@@ -245,7 +182,7 @@ case "$ACTION" in
   EDITED=$(cat "$TMPFILE")
   rm -f "$TMPFILE"
   if [ -n "$EDITED" ]; then
-    printf '%s' "$EDITED" | _clip_copy
+    printf '%s' "$EDITED" | clip_copy
     gum style "  Edited content copied to clipboard!"
   else
     echo "Aborted (empty content)."

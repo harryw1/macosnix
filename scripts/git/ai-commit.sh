@@ -4,7 +4,11 @@
 # `git-ai-commit` / `gaic` command.
 set -euo pipefail
 
-MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+MODEL="${OLLAMA_MODEL:-$(load_config_value models chat "qwen3.5:9b")}"
 # ── Help ─────────────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
@@ -22,44 +26,26 @@ fi
 
 # ── Guard: must be inside a git repo ──────────────────────────────────────────
 if ! git rev-parse --git-dir >/dev/null 2>&1; then
-  echo " Not inside a git repository."
+  echo " Not inside a git repository."
   exit 1
 fi
 
 # ── Guard: must have something to commit ──────────────────────────────────────
 STATUS=$(git status --short)
 if [ -z "$STATUS" ]; then
-  echo " Nothing to commit — working tree is clean."
+  echo " Nothing to commit — working tree is clean."
   exit 0
 fi
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
-if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "󰚩 Starting Ollama..."
-  open -a Ollama
-  echo -n "Waiting for Ollama"
-  _tries=0
-  while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-    sleep 1
-    echo -n "."
-    _tries=$((_tries + 1))
-    if [ "$_tries" -ge 30 ]; then
-      echo ""
-      echo " Ollama failed to start after 30 s. Is the app installed?"
-      exit 1
-    fi
-  done
-  echo " ready!"
-fi
+ensure_ollama
 
 # ── Gather git context (cap diff to avoid token overflow) ─────────────────────
 DIFF=$(git diff HEAD 2>/dev/null | head -c 8000 || true)
 [ -z "$DIFF" ] && DIFF=$(git diff --cached 2>/dev/null | head -c 8000 || true)
 
 # ── Build prompt ───────────────────────────────────────────────────────────────
-PROMPT_FILE=$(mktemp)
-MSG_FILE=$(mktemp)
-trap 'rm -f "$PROMPT_FILE" "$MSG_FILE"' EXIT
+make_tempfiles PROMPT_FILE
 
 printf '%s\n' \
   "You write conventional git commit messages. Given the git status and diff" \
@@ -83,58 +69,14 @@ printf '%s\n' \
   >"$PROMPT_FILE"
 
 # ── Call ollama REST API ───────────────────────────────────────────────────────
-# Using the API instead of `ollama run` lets us pass tuning parameters:
-#   think: false      — disable chain-of-thought (qwen3 and similar); biggest speed win
-#   temperature: 0.2  — deterministic output; commit messages aren't creative writing
-#   num_predict: 200  — hard token cap; commits are short, no need to generate more
-#   num_ctx: 4096     — enough for our truncated diff
-PAYLOAD_FILE=$(mktemp)
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-python3 -c "
-import json, sys, os
-with open(os.environ['PROMPT_FILE']) as f:
-    prompt = f.read()
-payload = {
-    'model': os.environ['MODEL'],
-    'prompt': prompt,
-    'stream': False,
-    'think': False,
-    'options': {
-        'temperature': 0.2,
-        'num_predict': 200,
-        'num_ctx': 4096,
-    }
-}
-print(json.dumps(payload))
-" >"$PAYLOAD_FILE"
-trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
-
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-gum spin --title "󰚩  Generating commit message with $MODEL..." -- \
-  sh -c 'curl -s http://localhost:11434/api/generate -H "Content-Type: application/json" -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
+RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
+  --temperature 0.2 --num_predict 200 --num_ctx 4096 \
+  --spinner "󰚩  Generating commit message with $MODEL...")
 
 # Parse response; fall back to awk anchor on commit type if model ignored think:false
-RAW=$(python3 -c "
-import json, os, sys
-try:
-    with open(os.environ['MSG_FILE']) as f:
-        d = json.load(f)
-    if 'error' in d:
-        print('Ollama error: ' + d['error'], file=sys.stderr)
-    print(d.get('response', ''))
-except Exception as e:
-    # Show the raw file content for debugging
-    with open(os.environ['MSG_FILE']) as f:
-        raw = f.read()[:200]
-    print(f'Failed to parse Ollama response: {e}', file=sys.stderr)
-    if raw:
-        print(f'Raw response: {raw}', file=sys.stderr)
-" 2>&1 || true)
 COMMIT_MSG=$(printf '%s' "$RAW" |
+  strip_think_blocks |
   awk '
-      /<think>/        { xml=1 }
-      xml && /<\/think>/ { xml=0; next }
-      xml              { next }
       !found && /^(feat|fix|chore|docs|refactor|style|test|perf|ci|build)(\([^)]*\))?!?:/ { found=1 }
       found            { print }
     ' |
@@ -144,16 +86,16 @@ COMMIT_MSG=$(printf '%s' "$RAW" |
 
 # If anchor didn't match (model returned clean output), use the whole response
 if [ -z "$COMMIT_MSG" ]; then
-  COMMIT_MSG=$(printf '%s' "$RAW" | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//')
+  COMMIT_MSG=$(printf '%s' "$RAW" | strip_think_blocks | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//')
 fi
 
 if [ -z "$COMMIT_MSG" ]; then
-  echo " No message generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
+  echo " No message generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
   exit 1
 fi
 
 # ── Display proposed message ───────────────────────────────────────────────────
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
+TERM_WIDTH=$(term_width)
 echo ""
 gum style \
   --width "$TERM_WIDTH" \
@@ -164,24 +106,24 @@ echo ""
 # ── Action menu ────────────────────────────────────────────────────────────────
 ACTION=$(gum choose \
   --header "What would you like to do?" \
-  "  Stage all & commit" \
+  "  Stage all & commit" \
   "󰐃  Commit staged only" \
   "󰏫  Edit then commit" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort")
 
 case "$ACTION" in
-"  Stage all & commit")
+"  Stage all & commit")
   git add -A
   printf '%s\n' "$COMMIT_MSG" | git commit -F -
   echo ""
-  gum style "  Committed!"
+  gum style "  Committed!"
   git log --oneline -1
   ;;
 "󰐃  Commit staged only")
   printf '%s\n' "$COMMIT_MSG" | git commit -F -
   echo ""
-  gum style "  Committed (staged only)!"
+  gum style "  Committed (staged only)!"
   git log --oneline -1
   ;;
 "󰏫  Edit then commit")
@@ -195,7 +137,7 @@ case "$ACTION" in
     [ "$STAGE" = "Stage all" ] && git add -A
     printf '%s\n' "$EDITED" | git commit -F -
     echo ""
-    gum style "  Committed!"
+    gum style "  Committed!"
     git log --oneline -1
   else
     echo "Aborted (empty message)."
@@ -204,7 +146,7 @@ case "$ACTION" in
 "󰑐  Regenerate")
   exec bash "${BASH_SOURCE[0]}"
   ;;
-"  Abort")
+"  Abort")
   echo "Aborted."
   exit 0
   ;;

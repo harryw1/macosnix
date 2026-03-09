@@ -34,22 +34,24 @@ import os
 import re
 import shutil
 import sqlite3
-import struct
 import sys
 from pathlib import Path
 
 import numpy as np
-import requests
+
+# ── Import shared libraries ───────────────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from embeddings import (
+    DB_PATH as SEARCH_DB_PATH,
+    get_embedding,
+    vec_to_bytes,
+    bytes_to_vec,
+    load_cached_embeddings as _load_cached_embeddings,
+    save_embeddings as _save_embeddings_to_db_raw,
+)
+from ollama import generate as _ollama_generate, EMBED_MODEL
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-
-OLLAMA_URL       = "http://localhost:11434/api/generate"
-OLLAMA_EMBED_URL = "http://localhost:11434/api/embeddings"
-MODEL            = os.environ.get("OLLAMA_MODEL",       "qwen3.5:9b")
-EMBED_MODEL      = os.environ.get("OLLAMA_MODEL_EMBED", "qwen3-embedding:0.6b")
-
-XDG_DATA_HOME  = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
-SEARCH_DB_PATH = Path(XDG_DATA_HOME) / "ai-search" / "vectors.db"
 
 # Characters of file content to pass as context per file
 SNIPPET_LEN = 400
@@ -380,25 +382,14 @@ SYSTEM_PROMPT = (
 
 def call_llm(prompt: str) -> str:
     """Send *prompt* to Ollama and return the raw text response."""
-    payload: dict = {
-        "model":      MODEL,
-        "prompt":     prompt,
-        "system":     SYSTEM_PROMPT,
-        "stream":     False,
-        "think":      False,      # suppress chain-of-thought on qwen3 models
-        "keep_alive": -1,         # keep model loaded in VRAM for the whole session
-        "options": {
-            "temperature": 0.15,
-            "num_predict": 8192,
-        },
-    }
-    try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=600)
-        resp.raise_for_status()
-        return resp.json().get("response", "").strip()
-    except requests.exceptions.RequestException as e:
-        print(f"Error calling Ollama: {e}", file=sys.stderr)
-        sys.exit(1)
+    return _ollama_generate(
+        prompt,
+        system=SYSTEM_PROMPT,
+        temperature=0.15,
+        num_predict=8192,
+        keep_alive=-1,
+        timeout=600,
+    )
 
 
 def extract_json(text: str) -> dict | list:
@@ -522,170 +513,11 @@ def _file_embed_text(f: dict) -> str:
     return f["path"]
 
 
-def _load_cached_embeddings(directory: str) -> dict[str, list[float]] | None:
-    """Load averaged embeddings from the ai-search SQLite DB for *directory*.
-
-    Returns a dict mapping relative file paths to float vectors, or None if
-    the DB doesn't exist or can't be read.  Multiple chunks per file are
-    averaged into a single representative vector.
-    """
-    if not SEARCH_DB_PATH.exists():
-        print(f"  ℹ No ai-search DB found — will embed from scratch.",
-              file=sys.stderr)
-        return None
-
-    abs_dir = str(Path(directory).resolve())
-    prefix  = abs_dir.rstrip("/") + "/"
-
-    try:
-        import sqlite_vec  # type: ignore[import-untyped]
-        conn = sqlite3.connect(SEARCH_DB_PATH)
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT m.filepath, e.embedding "
-            "FROM file_metadata m "
-            "JOIN file_embeddings e ON m.rowid = e.rowid "
-            "WHERE m.filepath LIKE ?",
-            (prefix + "%",),
-        )
-        rows = cur.fetchall()
-        conn.close()
-    except Exception as e:
-        print(f"  ⚠ Could not read ai-search DB for cache: {e}", file=sys.stderr)
-        return None
-
-    if not rows:
-        print(f"  ℹ ai-search DB exists but has no embeddings for this directory.",
-              file=sys.stderr)
-        return None
-
-    # Average multiple chunks per file into one vector
-    file_vecs: dict[str, list[float]] = {}
-    file_cnts: dict[str, int]         = {}
-    vec_len: int | None               = None
-
-    for filepath, vec_bytes in rows:
-        if vec_bytes is None:
-            continue
-        rel = filepath.removeprefix(prefix)
-        if vec_len is None:
-            vec_len = len(vec_bytes) // 4
-        vec = list(struct.unpack(f"<{vec_len}f", vec_bytes))
-        if rel in file_vecs:
-            file_vecs[rel] = [a + b for a, b in zip(file_vecs[rel], vec)]
-            file_cnts[rel] += 1
-        else:
-            file_vecs[rel] = vec
-            file_cnts[rel] = 1
-
-    if not file_vecs:
-        return None
-
-    # Divide accumulated sums by count to get averages
-    for rel in file_vecs:
-        cnt = file_cnts[rel]
-        if cnt > 1:
-            file_vecs[rel] = [v / cnt for v in file_vecs[rel]]
-
-    return file_vecs
-
-
+# _load_cached_embeddings and _save_embeddings_to_db are imported from
+# embeddings.py (aliased as _load_cached_embeddings and _save_embeddings_to_db_raw).
+# Thin wrapper to preserve the original call signature:
 def _save_embeddings_to_db(embeddings: list[tuple[str, list[float]]]) -> None:
-    """Write freshly computed embeddings back to the ai-search DB.
-
-    Each entry is (absolute_filepath, embedding_vector).  We store one row
-    per file in both ``file_metadata`` and ``file_embeddings``, using the
-    file path as the snippet (ai-organize doesn't chunk — it embeds the
-    whole metadata string).  Existing rows for the same filepath are
-    replaced so repeated runs stay idempotent.
-    """
-    if not embeddings:
-        return
-
-    try:
-        import sqlite_vec  # type: ignore[import-untyped]
-
-        SEARCH_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(SEARCH_DB_PATH)
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-        conn.execute("PRAGMA journal_mode=WAL;")
-
-        # Ensure tables exist (mirrors ai-search schema)
-        conn.execute("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS file_embeddings USING vec0(
-                embedding float[1024]
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS file_metadata (
-                rowid INTEGER PRIMARY KEY,
-                filepath TEXT NOT NULL,
-                mtime REAL NOT NULL,
-                snippet TEXT NOT NULL
-            )
-        """)
-
-        cur = conn.cursor()
-        written = 0
-
-        for filepath, vec in embeddings:
-            # Skip zero-vectors (embedding failures)
-            if all(v == 0.0 for v in vec[:8]):
-                continue
-
-            # Get current mtime (best-effort)
-            try:
-                mtime = Path(filepath).stat().st_mtime
-            except OSError:
-                mtime = 0.0
-
-            # Delete any existing rows for this filepath
-            cur.execute(
-                "SELECT rowid FROM file_metadata WHERE filepath = ?",
-                (filepath,),
-            )
-            old_rowids = [r[0] for r in cur.fetchall()]
-            if old_rowids:
-                placeholders = ",".join("?" * len(old_rowids))
-                cur.execute(
-                    f"DELETE FROM file_embeddings WHERE rowid IN ({placeholders})",
-                    old_rowids,
-                )
-                cur.execute(
-                    f"DELETE FROM file_metadata WHERE rowid IN ({placeholders})",
-                    old_rowids,
-                )
-
-            # Insert metadata
-            snippet = Path(filepath).name
-            cur.execute(
-                "INSERT INTO file_metadata (filepath, mtime, snippet) VALUES (?, ?, ?)",
-                (filepath, mtime, snippet),
-            )
-            new_id = cur.lastrowid
-
-            # Insert embedding at matching rowid
-            vec_bytes = struct.pack(f"<{len(vec)}f", *vec)
-            cur.execute(
-                "INSERT INTO file_embeddings (rowid, embedding) VALUES (?, ?)",
-                (new_id, vec_bytes),
-            )
-            written += 1
-
-            if written % 100 == 0:
-                conn.commit()
-
-        conn.commit()
-        conn.close()
-        print(f"  ✓ Saved {written} new embeddings to ai-search DB.", file=sys.stderr)
-
-    except Exception as e:
-        print(f"  ⚠ Could not write embeddings to ai-search DB: {e}", file=sys.stderr)
+    _save_embeddings_to_db_raw(embeddings)
 
 
 def embed_files(files: list[dict], directory: str | None = None) -> np.ndarray:
@@ -736,28 +568,20 @@ def embed_files(files: list[dict], directory: str | None = None) -> np.ndarray:
 
         api_calls += 1
         text = _file_embed_text(f)
-        payload = {
-            "model":  EMBED_MODEL,
-            "prompt": text,
-            "keep_alive": -1,
-        }
         try:
-            resp = requests.post(OLLAMA_EMBED_URL, json=payload, timeout=120)
-            resp.raise_for_status()
-            embedding = resp.json().get("embedding")
-            if embedding is None:
+            embedding = get_embedding(text, timeout=120, keep_alive=-1)
+            if not embedding:
                 print(f"  Warning: no embedding returned for {f['path']}, using zeros.",
                       file=sys.stderr)
-                # Use same dim as previous vectors, or a placeholder
                 dim = len(vectors[-1]) if vectors else 384
                 vectors.append([0.0] * dim)
             else:
                 vectors.append(embedding)
-                # Track for DB write-back
                 if abs_dir:
                     fresh_embeddings.append((abs_dir + f["path"], embedding))
-        except requests.exceptions.RequestException as e:
-            print(f"  Error embedding {f['path']}: {e}", file=sys.stderr)
+        except SystemExit:
+            # get_embedding calls sys.exit on failure; catch and use zeros
+            print(f"  Error embedding {f['path']}, using zeros.", file=sys.stderr)
             dim = len(vectors[-1]) if vectors else 384
             vectors.append([0.0] * dim)
 
@@ -1874,13 +1698,13 @@ def _dedupe_via_db(directory: str) -> list[dict] | None:
     file_cnts: dict[str, int]          = {}
     vec_len: int | None                = None
 
-    for filepath, vec_bytes in rows:
-        if vec_bytes is None:
+    for filepath, raw_bytes in rows:
+        if raw_bytes is None:
             continue
         rel = filepath.removeprefix(prefix)
         if vec_len is None:
-            vec_len = len(vec_bytes) // 4
-        vec = list(struct.unpack(f"<{vec_len}f", vec_bytes))
+            vec_len = len(raw_bytes) // 4
+        vec = bytes_to_vec(raw_bytes)
         if rel in file_vecs:
             file_vecs[rel] = [a + b for a, b in zip(file_vecs[rel], vec)]
             file_cnts[rel] += 1
@@ -1895,7 +1719,7 @@ def _dedupe_via_db(directory: str) -> list[dict] | None:
     for rel, vec in file_vecs.items():
         cnt = file_cnts[rel]
         avg = [v / cnt for v in vec]
-        averaged.append((rel, struct.pack(f"<{vec_len}f", *avg)))
+        averaged.append((rel, vec_to_bytes(avg)))
 
     # ── Build an in-memory sqlite-vec virtual table for efficient KNN ────────
     mem = sqlite3.connect(":memory:")

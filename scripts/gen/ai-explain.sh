@@ -8,7 +8,11 @@
 #   aiexplain "cargo build" "error[E0382]…" # cmd + its output as two args
 set -euo pipefail
 
-MODEL="${OLLAMA_MODEL:-lfm2.5-thinking:1.2b}"
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+MODEL="${OLLAMA_MODEL:-$(load_config_value models reasoning "lfm2.5-thinking:1.2b")}"
 # ── Help ─────────────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
@@ -57,29 +61,10 @@ if [ -z "$CMD_INPUT" ]; then
 fi
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
-if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-  echo "󰚩 Starting Ollama..."
-  open -a Ollama
-  echo -n "Waiting for Ollama"
-  _tries=0
-  while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-    sleep 1
-    echo -n "."
-    _tries=$((_tries + 1))
-    if [ "$_tries" -ge 30 ]; then
-      echo ""
-      echo " Ollama failed to start after 30 s. Is the app installed?"
-      exit 1
-    fi
-  done
-  echo " ready!"
-fi
+ensure_ollama
 
 # ── Build prompt ───────────────────────────────────────────────────────────────
-PROMPT_FILE=$(mktemp)
-MSG_FILE=$(mktemp)
-PAYLOAD_FILE=$(mktemp)
-trap 'rm -f "$PROMPT_FILE" "$MSG_FILE" "$PAYLOAD_FILE"' EXIT
+make_tempfiles PROMPT_FILE
 
 if [ -n "$OUTPUT_INPUT" ]; then
   # We have both a command and its output — focus on diagnosing the failure
@@ -108,57 +93,22 @@ else
     >"$PROMPT_FILE"
 fi
 
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-python3 -c "
-import json, os
-with open(os.environ['PROMPT_FILE']) as f:
-    prompt = f.read()
-payload = {
-    'model': os.environ['MODEL'],
-    'prompt': prompt,
-    'stream': False,
-    'options': {
-        'temperature': 0.6,
-        'num_predict': 1500,
-        'num_ctx': 4096,
-    }
-}
-print(json.dumps(payload))
-" >"$PAYLOAD_FILE"
+# ── Generate and display ──────────────────────────────────────────────────────
+RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
+  --temperature 0.6 --num_predict 1500 --num_ctx 4096 \
+  --spinner "󰚩  Thinking with $MODEL...")
 
-export PROMPT_FILE MODEL PAYLOAD_FILE MSG_FILE
-gum spin --title "󰚩  Thinking with $MODEL..." -- \
-  sh -c 'curl -s http://localhost:11434/api/generate \
-    -H "Content-Type: application/json" \
-    -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
-
-# Cleanly parse out the think block and the final explanation using Python
-EXPLANATION=$(python3 -c "
-import json, os, re, sys
-try:
-    with open(os.environ['MSG_FILE']) as f:
-        d = json.load(f)
-    resp = d.get('response', '')
-    cleaned = re.sub(r'<think>.*?</think>', '', resp, flags=re.DOTALL).strip()
-    if not cleaned:
-        cleaned = resp.strip()
-    print(cleaned)
-except Exception as e:
-    print(f'Error parsing response: {e}')
-    sys.exit(1)
-" 2>&1 || true)
+EXPLANATION=$(printf '%s' "$RAW" | strip_think_blocks)
+# If stripping removed everything, fall back to the raw response
+[ -z "$EXPLANATION" ] && EXPLANATION="$RAW"
 
 if [ -z "$EXPLANATION" ]; then
-  echo " No explanation generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
+  echo " No explanation generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
   exit 1
 fi
 
 echo ""
-TERM_WIDTH=$(tput cols 2>/dev/null || echo 80)
-if ! [[ "$TERM_WIDTH" =~ ^[0-9]+$ ]]; then
-  TERM_WIDTH=80
-fi
-[ "$TERM_WIDTH" -gt 100 ] && TERM_WIDTH=100
+TERM_WIDTH=$(term_width)
 
 gum style \
   --width "$TERM_WIDTH" \

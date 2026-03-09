@@ -8,13 +8,16 @@
 #   ai-search --clear
 set -euo pipefail
 
-MODEL="${OLLAMA_MODEL_EMBED:-qwen3-embedding:0.6b}"
+# ── Source shared library ────────────────────────────────────────────────────
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/common.sh"
+
+MODEL="${OLLAMA_MODEL_EMBED:-$(load_config_value models embed "qwen3-embedding:0.6b")}"
 XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 APP_DIR="$XDG_DATA_HOME/ai-search"
 
 # Python script path (can be overridden by Nix during build)
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
-PY_SCRIPT="${AI_SEARCH_PY_PATH:-$DIR/ai-search.py}"
+PY_SCRIPT="${AI_SEARCH_PY_PATH:-$SCRIPT_DIR/ai-search.py}"
 
 # Initialize variables
 INDEX_DIR=""
@@ -80,33 +83,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Ensure ollama is running ───────────────────────────────────────────────────
-ensure_ollama() {
-  if ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-    echo "󰚩 Starting Ollama..."
-    open -a Ollama
-    echo -n "Waiting for Ollama"
-    _tries=0
-    while ! curl -s http://localhost:11434/api/tags >/dev/null 2>&1; do
-      sleep 1
-      echo -n "."
-      _tries=$((_tries + 1))
-      if [ "$_tries" -ge 30 ]; then
-        echo ""
-        echo " Ollama failed to start after 30 s. Is the app installed?"
-        exit 1
-      fi
-    done
-    echo " ready!"
-  fi
-
-  # Check if model is pulled
-  if ! curl -s http://localhost:11434/api/tags | grep -q "\"$MODEL\""; then
-      echo " Embedding model '$MODEL' not found. Run: ollama pull $MODEL"
-      exit 1
-  fi
-}
-
 # ── Handle Commands ────────────────────────────────────────────────────────────
 
 if [ "$DO_CLEAR" = true ]; then
@@ -133,12 +109,12 @@ except Exception as e:
 fi
 
 if [ -n "$INDEX_DIR" ]; then
-  ensure_ollama
+  ensure_ollama "$MODEL"
   # Resolve to absolute path securely
   REAL_DIR=$(cd "$INDEX_DIR" 2>/dev/null && pwd || echo "$INDEX_DIR")
-  
+
   if [ ! -d "$REAL_DIR" ]; then
-      echo " Error: Directory '$REAL_DIR' does not exist."
+      echo " Error: Directory '$REAL_DIR' does not exist."
       exit 1
   fi
 
@@ -148,11 +124,11 @@ if [ -n "$INDEX_DIR" ]; then
 fi
 
 if [ -n "$SEARCH_QUERY" ]; then
-  ensure_ollama
-  
+  ensure_ollama "$MODEL"
+
   # Ensure DB actually exists before searching
   if [ ! -f "$APP_DIR/vectors.db" ]; then
-      echo " Error: No search database found. Please index a directory first:"
+      echo " Error: No search database found. Please index a directory first:"
       echo "  ai-search --index ~/GitRepos"
       exit 1
   fi
@@ -169,7 +145,7 @@ if [ -n "$SEARCH_QUERY" ]; then
   RESULTS_FILE=$(mktemp)
   trap 'rm -f "$RESULTS_FILE"' EXIT
   export RESULTS_FILE
-  
+
   gum spin --title "󰚩  Searching..." -- \
     sh -c "uv run \"$PY_SCRIPT\" --search \"$SEARCH_QUERY\" > \"$RESULTS_FILE\""
 
@@ -178,7 +154,7 @@ if [ -n "$SEARCH_QUERY" ]; then
       echo "No results found."
       exit 0
   fi
-  
+
   # Format output beautifully using python to parse JSON and gum to style
   echo ""
   gum log --level info "Top Semantic Matches"
@@ -192,29 +168,29 @@ try:
     if not results:
         print('No close matches found.')
         sys.exit(0)
-    
+
     for i, r in enumerate(results, 1):
         filepath = r['filepath']
         snippet = r['snippet'].replace('\n', ' ')
         dist = r['distance']
         score = max(0, int((1.0 - dist) * 100)) # rough conversion to 0-100%
-        
+
         # Color specific formatting using ANSI escape codes
         blue = '\033[38;5;111m'
         gray = '\033[38;5;244m'
         green = '\033[38;5;114m'
         reset = '\033[0m'
         bold = '\033[1m'
-        
+
         # Format the file path to be clickable in many terminals
         file_link = f'\033]8;;file://{filepath}\033\\\\{filepath}\033]8;;\033\\\\'
-        
+
         print(f'{bold}{blue}{i}. {file_link}{reset} {green}(Match: {score}%){reset}')
         print(f'   {gray}...{snippet}...{reset}')
         print()
 except Exception as e:
     print('Failed to parse search results.', e)
 "
-  
+
   exit 0
 fi
