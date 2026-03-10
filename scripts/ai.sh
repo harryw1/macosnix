@@ -41,6 +41,7 @@ TOOLS=(
   "  ai-organize      Reorganize & deduplicate|ai-organize|AI-powered file renaming, grouping, and dedup"
 
   # ── Search & Chat ──
+  "  ai-index         Index current directory|ai-index|Quick index / reindex the current directory for search & chat"
   "  ai-search        Semantic local search|ai-search|Index a directory and search by meaning"
   "  ai-chat          RAG chat over codebase|ai-chat|Chat with your indexed files using retrieval-augmented generation"
 
@@ -68,6 +69,7 @@ if [[ $# -gt 0 ]]; then
     slides)    exec ai-slide-copy "$@" ;;
     duck)      exec ai-duck "$@" ;;
     organize)  exec ai-organize "$@" ;;
+    index)     exec ai-index "$@" ;;
     search)    exec ai-search "$@" ;;
     chat)      exec ai-chat "$@" ;;
     db)        exec ai-db "$@" ;;
@@ -85,13 +87,15 @@ if [[ $# -gt 0 ]]; then
       echo "  cmd       ai-cmd             explain   ai-explain"
       echo "  narrative ai-narrative       slides    ai-slide-copy"
       echo "  duck      ai-duck            organize  ai-organize"
-      echo "  search    ai-search          chat      ai-chat"
-      echo "  db        ai-db              config    ai-config"
-      echo "  pull      ollama-pull"
+      echo "  index     ai-index           search    ai-search"
+      echo "  chat      ai-chat            db        ai-db"
+      echo "  config    ai-config          pull      ollama-pull"
       echo ""
       echo "Examples:"
       echo "  ai cmd 'list large files'    Run ai-cmd directly"
-      echo "  ai search --index .          Index current directory"
+      echo "  ai index                     Index current directory"
+      echo "  ai index --reindex           Force full reindex"
+      echo "  ai search 'find my aliases'  Semantic search"
       echo "  ai db --status               Show database stats"
       exit 0
       ;;
@@ -156,7 +160,7 @@ echo ""
 case "$cmd" in
 
   # ── Self-contained TUIs (work with no args) ──────────────────────────────
-  ai-db|ai-config|ai-chat)
+  ai-db|ai-config|ai-chat|ai-index)
     exec "$cmd"
     ;;
 

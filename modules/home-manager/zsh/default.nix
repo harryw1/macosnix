@@ -85,6 +85,7 @@ in
       aie    = "ai-explain";   # Explain a command or error
       aicmd  = "ai-cmd";       # Natural language → shell command
       aichat = "ai-chat";      # RAG chat over indexed codebase
+      aix    = "ai-index";     # Quick index / reindex current directory
       ais    = "ai-search";    # Semantic file search
       ain    = "ai-narrative"; # Data → report prose
       aid    = "ai-duck";      # Ask questions about data files (DuckDB)

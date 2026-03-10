@@ -588,6 +588,13 @@ README
     exec bash "${../../scripts/data/ai-organize.sh}" "$@"
   '';
 
+  ai-index = pkgs.writeShellScriptBin "ai-index" ''
+    export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
+    export AI_SEARCH_PY_PATH="${../../scripts/search/ai-search.py}"
+    export AI_LIB_PATH="${../../scripts/lib}"
+    exec bash "${../../scripts/search/ai-index.sh}" "$@"
+  '';
+
   ai-db = pkgs.writeShellScriptBin "ai-db" ''
     export XDG_DATA_HOME="''${XDG_DATA_HOME:-''$HOME/.local/share}"
     export AI_DB_PY_PATH="${../../scripts/data/ai-db.py}"
@@ -657,6 +664,7 @@ in
     ai-duck
     ai-slide-copy
     ai-organize
+    ai-index
     ai-db
     ai-config
     ai-help

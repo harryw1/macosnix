@@ -23,6 +23,7 @@ AI CLI Tools — powered by Ollama
     ai-organize          Reorganize, rename, deduplicate files
 
   Search
+    ai-index             Quick index / reindex current directory
     ai-search            Semantic local search (index + query)
     ai-chat              RAG chat over indexed codebase
 
