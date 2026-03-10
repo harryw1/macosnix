@@ -40,7 +40,9 @@ from pathlib import Path
 import numpy as np
 
 # ── Import shared libraries ───────────────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import os
+_lib = os.environ.get("AI_LIB_PATH") or str(Path(__file__).resolve().parent.parent / "lib")
+sys.path.insert(0, _lib)
 from embeddings import (
     DB_PATH as SEARCH_DB_PATH,
     get_embedding,

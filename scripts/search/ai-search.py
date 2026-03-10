@@ -15,7 +15,9 @@ import sys
 from pathlib import Path
 
 # ── Import shared library ─────────────────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import os
+_lib = os.environ.get("AI_LIB_PATH") or str(Path(__file__).resolve().parent.parent / "lib")
+sys.path.insert(0, _lib)
 from embeddings import (
     init_db,
     clear_db,

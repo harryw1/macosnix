@@ -25,7 +25,9 @@ import sys
 from pathlib import Path
 
 # ── Import shared libraries ───────────────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+import os
+_lib = os.environ.get("AI_LIB_PATH") or str(Path(__file__).resolve().parent.parent / "lib")
+sys.path.insert(0, _lib)
 from config import get as _cfg
 from embeddings import open_db, retrieve_with_chunks, get_embedding, vec_to_bytes
 from ollama import generate

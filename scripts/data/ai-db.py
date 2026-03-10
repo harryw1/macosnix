@@ -39,8 +39,8 @@ from pathlib import Path
 # ── Resolve lib path ─────────────────────────────────────────────────────────
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-LIB_DIR = SCRIPT_DIR.parent / "lib"
-sys.path.insert(0, str(LIB_DIR))
+_lib = os.environ.get("AI_LIB_PATH") or str(SCRIPT_DIR.parent / "lib")
+sys.path.insert(0, _lib)
 
 import sqlite_vec  # noqa: E402
 from config import get as _cfg  # noqa: E402
