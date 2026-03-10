@@ -145,7 +145,7 @@ ollama_generate() {
   TEMPERATURE="$temperature" NUM_PREDICT="$num_predict" NUM_CTX="$num_ctx" THINK="$think" \
   python3 -c "
 import json, os
-with open(os.environ['PROMPT_FILE']) as f:
+with open(os.environ['PROMPT_FILE'], errors='replace') as f:
     prompt = f.read()
 payload = {
     'model': os.environ['MODEL'],
