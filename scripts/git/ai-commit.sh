@@ -115,7 +115,10 @@ ACTION=$(gum choose \
   "󰐃  Commit staged only" \
   "󰏫  Edit then commit" \
   "󰑐  Regenerate" \
-  "  Abort") || { echo "Aborted."; exit 0; }
+  "  Abort") || {
+  echo "Aborted."
+  exit 0
+}
 
 case "$ACTION" in
 "  Stage all & commit")
