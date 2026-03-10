@@ -25,6 +25,26 @@ _COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config.sh
 source "${_COMMON_DIR}/config.sh"
 
+# ── Temp-file cleanup registry ─────────────────────────────────────────────
+# All temp files are registered here and cleaned up by a single EXIT trap.
+# This avoids the fragile trap-chaining pattern (trap -p | sed) that breaks
+# when traps nest more than a couple of levels deep.
+
+_CLEANUP_FILES=()
+
+_cleanup_registered_files() {
+  if [ ${#_CLEANUP_FILES[@]} -gt 0 ]; then
+    rm -f "${_CLEANUP_FILES[@]}" 2>/dev/null || true
+  fi
+}
+trap _cleanup_registered_files EXIT
+
+_register_cleanup() {
+  # Usage: _register_cleanup FILE [FILE...]
+  # Adds files to the global cleanup list; they'll be removed on EXIT.
+  _CLEANUP_FILES+=("$@")
+}
+
 # ── Ollama lifecycle ─────────────────────────────────────────────────────────
 
 ensure_ollama() {
@@ -116,8 +136,7 @@ ollama_generate() {
   local payload_file msg_file
   payload_file=$(mktemp)
   msg_file=$(mktemp)
-  # Append to existing trap rather than replacing it
-  trap "rm -f '$payload_file' '$msg_file'; $(trap -p EXIT | sed "s/^trap -- '//;s/' EXIT$//")" EXIT
+  _register_cleanup "$payload_file" "$msg_file"
 
   # Build JSON payload via Python (handles escaping correctly)
   PROMPT_FILE="$prompt_file" MODEL="$model" \
@@ -315,24 +334,12 @@ term_width() {
 make_tempfiles() {
   # Usage: make_tempfiles PROMPT_FILE MSG_FILE PAYLOAD_FILE
   # Creates a temp file for each argument and exports the variable.
-  # Registers a single EXIT trap that cleans up all of them.
-  local _cleanup_files=()
+  # Registers them with the global cleanup handler.
   for varname in "$@"; do
     local tmpf
     tmpf=$(mktemp)
     eval "$varname='$tmpf'"
     export "$varname"
-    _cleanup_files+=("$tmpf")
+    _register_cleanup "$tmpf"
   done
-
-  # Build cleanup command
-  local cleanup_cmd="rm -f ${_cleanup_files[*]}"
-  # Append to any existing EXIT trap
-  local existing_trap
-  existing_trap=$(trap -p EXIT | sed "s/^trap -- '//;s/' EXIT$//")
-  if [ -n "$existing_trap" ]; then
-    trap "$existing_trap; $cleanup_cmd" EXIT
-  else
-    trap "$cleanup_cmd" EXIT
-  fi
 }

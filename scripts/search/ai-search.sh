@@ -143,7 +143,7 @@ if [ -n "$SEARCH_QUERY" ]; then
   fi
 
   RESULTS_FILE=$(mktemp)
-  trap 'rm -f "$RESULTS_FILE"' EXIT
+  _register_cleanup "$RESULTS_FILE"
   export RESULTS_FILE
 
   gum spin --title "󰚩  Searching..." -- \

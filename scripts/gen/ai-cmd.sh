@@ -130,7 +130,7 @@ describe_result() {
 
   local desc_prompt
   desc_prompt=$(mktemp)
-  trap "rm -f '$desc_prompt'; $(trap -p EXIT | sed "s/^trap -- '//;s/' EXIT$//")" EXIT
+  _register_cleanup "$desc_prompt"
 
   local output_section
   if [ -z "$output" ] && [ "$exit_code" -eq 0 ]; then

@@ -89,7 +89,7 @@ fi
 # ── Run RAG pipeline ───────────────────────────────────────────────────────────
 RESULT_FILE=$(mktemp)
 PROGRESS_FILE=$(mktemp)
-trap 'rm -f "$RESULT_FILE" "$PROGRESS_FILE"' EXIT
+_register_cleanup "$RESULT_FILE" "$PROGRESS_FILE"
 
 export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL PROGRESS_FILE
 

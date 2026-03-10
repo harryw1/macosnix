@@ -164,7 +164,7 @@ echo ""
 # ── Step 1: scan (fast — show spinner) ────────────────────────────────────────
 SCAN_FILE=$(mktemp /tmp/ai-organize-scan-XXXXXX.json)
 PLAN_FILE=$(mktemp /tmp/ai-organize-plan-XXXXXX.json)
-trap 'rm -f "$SCAN_FILE" "$PLAN_FILE"' EXIT
+_register_cleanup "$SCAN_FILE" "$PLAN_FILE"
 
 # Scan flags: filtering options that affect which files are included
 SCAN_FLAGS=""
