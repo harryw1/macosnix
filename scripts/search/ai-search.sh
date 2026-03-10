@@ -147,11 +147,12 @@ if [ -n "$SEARCH_QUERY" ]; then
   export RESULTS_FILE
 
   gum spin --title "󰚩  Searching..." -- \
-    sh -c "uv run \"$PY_SCRIPT\" --search \"$SEARCH_QUERY\" > \"$RESULTS_FILE\""
+    env PY="$PY_SCRIPT" Q="$SEARCH_QUERY" OUT="$RESULTS_FILE" \
+    sh -c 'uv run "$PY" --search "$Q" > "$OUT"'
 
   # Check if empty (no results or error)
   if [ ! -s "$RESULTS_FILE" ]; then
-      echo "No results found."
+      show_empty "No results found."
       exit 0
   fi
 

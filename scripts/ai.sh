@@ -20,8 +20,10 @@ if ! command -v gum >/dev/null 2>&1; then
 fi
 
 # ── Tool registry ───────────────────────────────────────────────────────────
-# Format: "display label|command|description"
-# Grouped by category; headers are entries with command=":"
+# Format: "display_label|command_name|description"
+#   display_label:  shown in the gum choose menu (first word must match command_name)
+#   command_name:   the actual binary to exec
+#   description:    shown after selection, before dispatch
 
 TOOLS=(
   # ── Git ──

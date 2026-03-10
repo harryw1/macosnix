@@ -82,6 +82,8 @@ printf '%s\n' \
   "Task: $QUERY" \
   >"$PROMPT_FILE"
 
+# temperature 0.1: near-deterministic for a single precise command
+# num_predict 200: commands are short; num_ctx 2048: small context needed
 RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
   --temperature 0.1 --num_predict 200 --num_ctx 2048 \
   --spinner "󰚩  Generating command with $MODEL...")
@@ -100,7 +102,7 @@ if [ -z "$CMD" ]; then
   exit 1
 fi
 
-# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+# Verify the generated command against known patterns and log for feedback learning
 POST_RESULT=$(pipeline_post "ai-cmd" "$QUERY" "$CMD")
 POST_VERIFIED=$(printf '%s' "$POST_RESULT" | python3 -c "
 import json, sys
@@ -195,7 +197,7 @@ ACTION=$(gum choose \
   "󰆏  Copy to clipboard" \
   "󰏫  Edit then run" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort") || { echo "Aborted."; exit 0; }
 
 case "$ACTION" in
 "  Run it")

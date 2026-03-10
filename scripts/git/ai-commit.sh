@@ -69,6 +69,8 @@ printf '%s\n' \
   >"$PROMPT_FILE"
 
 # ── Call ollama REST API ───────────────────────────────────────────────────────
+# temperature 0.2: low creativity for consistent conventional commits
+# num_predict 200: commit messages are short; num_ctx 4096: room for diff context
 RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
   --temperature 0.2 --num_predict 200 --num_ctx 4096 \
   --spinner "󰚩  Generating commit message with $MODEL...")
@@ -94,7 +96,7 @@ if [ -z "$COMMIT_MSG" ]; then
   exit 1
 fi
 
-# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+# Verify commit message format and log for feedback learning
 POST_RESULT=$(pipeline_post "ai-commit" "$STATUS" "$COMMIT_MSG")
 
 # ── Display proposed message ───────────────────────────────────────────────────
@@ -113,7 +115,7 @@ ACTION=$(gum choose \
   "󰐃  Commit staged only" \
   "󰏫  Edit then commit" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort") || { echo "Aborted."; exit 0; }
 
 case "$ACTION" in
 "  Stage all & commit")

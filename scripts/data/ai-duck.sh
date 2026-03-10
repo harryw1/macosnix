@@ -212,7 +212,7 @@ ACTION=$(gum choose \
   "  Run query" \
   "󰏫  Edit then run" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort") || { echo "Aborted."; exit 0; }
 
 case "$ACTION" in
 "  Run query")

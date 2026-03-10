@@ -18,6 +18,8 @@
 #   term_width                  Print usable terminal width (capped at 100)
 #   make_tempfiles VAR1 VAR2…   Create temp files, assign to named variables, register cleanup
 #   load_config_value S K [D]   Read a value from config.toml (via config.sh)
+#   pause                       Wait for the user to press Enter before continuing
+#   show_empty MSG              Display a styled "no results" message
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
@@ -170,6 +172,11 @@ print(json.dumps(payload))
       -d @"$PAYLOAD_FILE" > "$MSG_FILE" 2>/dev/null'
 
   # Parse response JSON → plain text
+  # stderr is captured separately so Ollama errors don't appear as LLM output
+  local err_file
+  err_file=$(mktemp)
+  _register_cleanup "$err_file"
+
   local response
   response=$(MSG_FILE="$msg_file" python3 -c "
 import json, os, sys
@@ -178,6 +185,7 @@ try:
         d = json.load(f)
     if 'error' in d:
         print('Ollama error: ' + d['error'], file=sys.stderr)
+        sys.exit(1)
     print(d.get('response', ''))
 except Exception as e:
     with open(os.environ['MSG_FILE']) as f:
@@ -185,7 +193,14 @@ except Exception as e:
     print(f'Failed to parse Ollama response: {e}', file=sys.stderr)
     if raw:
         print(f'Raw response: {raw}', file=sys.stderr)
-" 2>&1 || true)
+    sys.exit(1)
+" 2>"$err_file") || {
+    local err_msg
+    err_msg=$(cat "$err_file" 2>/dev/null)
+    if [ -n "$err_msg" ]; then
+      gum log --level error "$err_msg"
+    fi
+  }
 
   if [ -z "$response" ]; then
     echo " No response generated. Is '$model' pulled? Run: ollama pull $model" >&2
@@ -208,6 +223,12 @@ progress_spinner() {
   # When the subprocess exits, the spinner stops.
   #
   # If the progress file is never written, FALLBACK_TITLE is shown.
+  #
+  # Example:
+  #   progress_spinner "$PROGRESS_FILE" "Working..." -- \
+  #     my_command --progress-file "$PROGRESS_FILE" arg1 arg2
+  #
+  # The subprocess writes stage names like "Step 1: Indexing" to PROGRESS_FILE.
 
   local progress_file="$1"
   local fallback_title="$2"
@@ -338,8 +359,22 @@ make_tempfiles() {
   for varname in "$@"; do
     local tmpf
     tmpf=$(mktemp)
-    eval "$varname='$tmpf'"
+    printf -v "$varname" '%s' "$tmpf"
     export "$varname"
     _register_cleanup "$tmpf"
   done
+}
+
+# ── UX helpers ──────────────────────────────────────────────────────────────
+
+pause() {
+  # Wait for the user to press Enter.  Lighter than gum input (no text field).
+  gum style --faint "  Press Enter to continue…"
+  read -rs
+}
+
+show_empty() {
+  # Usage: show_empty "No results found."
+  # Standardised "nothing here" message across the suite.
+  gum style --foreground 245 --italic "  ${1:-No results.}"
 }

@@ -94,6 +94,8 @@ else
 fi
 
 # ── Generate and display ──────────────────────────────────────────────────────
+# temperature 0.6: more creative for natural-language explanations
+# num_predict 1500: explanations can be verbose; num_ctx 4096: room for error context
 RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
   --temperature 0.6 --num_predict 1500 --num_ctx 4096 \
   --spinner "󰚩  Thinking with $MODEL...")
@@ -107,7 +109,7 @@ if [ -z "$EXPLANATION" ]; then
   exit 1
 fi
 
-# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+# Verify the explanation for accuracy and log for feedback learning
 POST_RESULT=$(pipeline_post "ai-explain" "$CMD_INPUT" "$EXPLANATION")
 POST_VERIFIED=$(printf '%s' "$POST_RESULT" | python3 -c "
 import json, sys

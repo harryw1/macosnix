@@ -55,23 +55,23 @@ if [ -z "$DATA_INPUT" ]; then
   [ -z "$DATA_INPUT" ] && echo "Aborted." && exit 0
 fi
 
-# ── Gather context ─────────────────────────────────────────────────────────────
-NUM_SLIDES=$(gum choose \
+# ── Gather context (use env vars if set, e.g. during regenerate) ──────────────
+NUM_SLIDES="${_REGEN_NUM_SLIDES:-$(gum choose \
   --header "How many slides?" \
   "1 slide" \
   "2–3 slides" \
-  "4–5 slides")
+  "4–5 slides")}"
 
-INCLUDE_NOTES=$(gum choose \
+INCLUDE_NOTES="${_REGEN_INCLUDE_NOTES:-$(gum choose \
   --header "Include speaker notes?" \
   "Yes — titles, bullets, and speaker notes" \
-  "No — titles and bullets only")
+  "No — titles and bullets only")}"
 
-STYLE=$(gum choose \
+STYLE="${_REGEN_STYLE:-$(gum choose \
   --header "Presentation style?" \
   "Executive — high-level, impact-focused" \
   "Client-facing — persuasive, story-driven" \
-  "Technical — detailed, precise")
+  "Technical — detailed, precise")}"
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
 ensure_ollama
@@ -170,7 +170,7 @@ ACTION=$(gum choose \
   "󰏫  Review and edit, then copy" \
   "󰈙  Save to file" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort") || { echo "Aborted."; exit 0; }
 
 case "$ACTION" in
 "󰆏  Copy all to clipboard")
@@ -202,9 +202,12 @@ case "$ACTION" in
   fi
   ;;
 "󰑐  Regenerate")
+  # Save data + choices so regenerate doesn't re-prompt for everything
   _REGEN_FILE=$(mktemp)
   printf '%s' "$DATA_INPUT" > "$_REGEN_FILE"
-  exec bash "${BASH_SOURCE[0]}" "$_REGEN_FILE"
+  _REGEN_NUM_SLIDES="$NUM_SLIDES" _REGEN_INCLUDE_NOTES="$INCLUDE_NOTES" \
+    _REGEN_STYLE="$STYLE" \
+    exec bash "${BASH_SOURCE[0]}" "$_REGEN_FILE"
   ;;
 "  Abort")
   echo "Aborted."

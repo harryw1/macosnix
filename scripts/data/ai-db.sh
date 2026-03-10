@@ -232,22 +232,28 @@ do_search() {
   query=$(gum input \
     --header "Semantic search query:" \
     --placeholder "e.g., where are my zsh aliases defined?" \
-    --width 80)
+    --width 80) || return
 
   if [ -z "$query" ]; then
     return
   fi
 
+  local results_file
+  results_file=$(mktemp)
+  _register_cleanup "$results_file"
+
   echo ""
   gum spin --title "󰚩  Searching (hybrid BM25 + vector)..." -- \
-    sh -c "python3 '$PY_SCRIPT' search '$query' > /tmp/ai-db-search-results.txt 2>/dev/null"
+    env PY="$PY_SCRIPT" Q="$query" OUT="$results_file" \
+    sh -c 'uv run "$PY" search "$Q" > "$OUT" 2>/dev/null'
 
   local results
-  results=$(cat /tmp/ai-db-search-results.txt)
-  rm -f /tmp/ai-db-search-results.txt
+  results=$(cat "$results_file")
 
   if [ -z "$results" ]; then
-    gum style --foreground 196 "  No results found."
+    show_empty "No results found."
+    echo ""
+    pause
     return
   fi
 
@@ -256,31 +262,40 @@ do_search() {
   echo "$results"
   echo ""
 
-  gum input --header "Press Enter to continue..." --placeholder "" >/dev/null 2>&1 || true
+  pause
 }
 
 # ── Helper: orphan management ────────────────────────────────────────────────
 
 manage_orphans() {
+  local orphans_file
+  orphans_file=$(mktemp)
+  _register_cleanup "$orphans_file"
+
   gum spin --title "Scanning for orphaned entries..." -- \
-    sh -c "python3 '$PY_SCRIPT' orphans > /tmp/ai-db-orphans.txt 2>/dev/null"
+    env PY="$PY_SCRIPT" OUT="$orphans_file" \
+    sh -c 'uv run "$PY" orphans > "$OUT" 2>/dev/null'
 
   local orphans
-  orphans=$(cat /tmp/ai-db-orphans.txt)
-  rm -f /tmp/ai-db-orphans.txt
+  orphans=$(cat "$orphans_file")
 
   gum style --bold --foreground 39 "Orphaned Entries"
   gum style --foreground 245 "(Files in database whose source no longer exists on disk)"
   echo ""
-  echo "$orphans"
-  echo ""
 
-  # Check if there are actual orphans (not just "No orphans found.")
-  if echo "$orphans" | grep -q "orphaned file"; then
-    if gum confirm "Remove all orphaned entries from the database?"; then
-      local result
-      result=$(uv run "$PY_SCRIPT" delete-orphans 2>/dev/null)
-      gum style --foreground 212 "  $result"
+  if [ -z "$orphans" ]; then
+    show_empty "No orphaned entries found."
+  else
+    echo "$orphans"
+    echo ""
+
+    # Check if there are actual orphans (not just "No orphans found.")
+    if echo "$orphans" | grep -q "orphaned file"; then
+      if gum confirm "Remove all orphaned entries from the database?"; then
+        local result
+        result=$(uv run "$PY_SCRIPT" delete-orphans 2>/dev/null)
+        gum style --foreground 212 "  $result"
+      fi
     fi
   fi
 }
@@ -288,18 +303,26 @@ manage_orphans() {
 # ── Helper: stale file check ────────────────────────────────────────────────
 
 check_stale() {
+  local stale_file
+  stale_file=$(mktemp)
+  _register_cleanup "$stale_file"
+
   gum spin --title "Checking for stale entries..." -- \
-    sh -c "python3 '$PY_SCRIPT' stale > /tmp/ai-db-stale.txt 2>/dev/null"
+    env PY="$PY_SCRIPT" OUT="$stale_file" \
+    sh -c 'uv run "$PY" stale > "$OUT" 2>/dev/null'
 
   local stale
-  stale=$(cat /tmp/ai-db-stale.txt)
-  rm -f /tmp/ai-db-stale.txt
+  stale=$(cat "$stale_file")
 
   gum style --bold --foreground 39 "Stale Entries"
   gum style --foreground 245 "(Files modified on disk since last indexed)"
   echo ""
 
-  echo "$stale" | python3 -c "
+  # Guard: if output is empty or not valid JSON, show a friendly message
+  if [ -z "$stale" ] || ! echo "$stale" | python3 -c "import json,sys; json.load(sys.stdin)" 2>/dev/null; then
+    show_empty "All files are up to date."
+  else
+    echo "$stale" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 if not data:
@@ -311,30 +334,37 @@ else:
         print()
     print(f'  {len(data)} stale file(s). Re-index to update.')
 "
+  fi
 
   echo ""
-  gum input --header "Press Enter to continue..." --placeholder "" >/dev/null 2>&1 || true
+  pause
 }
 
 # ── Helper: maintenance menu ─────────────────────────────────────────────────
 
 maintenance_menu() {
-  local action
-  action=$(gum choose \
-    --header "Database Maintenance:" \
-    "← Back" \
-    "Vacuum (compact + integrity check)" \
-    "Rebuild FTS5 index" \
-    "Clean orphaned entries" \
-    "Check stale files")
+  while true; do
+    local action
+    action=$(gum choose \
+      --header "Database Maintenance:" \
+      "← Back" \
+      "Vacuum (compact + integrity check)" \
+      "Rebuild FTS5 index" \
+      "Clean orphaned entries" \
+      "Check stale files") || break
 
-  case "$action" in
-    "Vacuum (compact + integrity check)")
-      gum spin --title "Vacuuming..." -- uv run "$PY_SCRIPT" vacuum > /tmp/ai-db-vacuum.txt 2>/dev/null
-      local result
-      result=$(cat /tmp/ai-db-vacuum.txt)
-      rm -f /tmp/ai-db-vacuum.txt
-      echo "$result" | python3 -c "
+    case "$action" in
+      "← Back") break ;;
+      "Vacuum (compact + integrity check)")
+        local vacuum_file
+        vacuum_file=$(mktemp)
+        _register_cleanup "$vacuum_file"
+        gum spin --title "Vacuuming..." -- \
+          env PY="$PY_SCRIPT" OUT="$vacuum_file" \
+          sh -c 'uv run "$PY" vacuum > "$OUT" 2>/dev/null'
+        local result
+        result=$(cat "$vacuum_file")
+        echo "$result" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 print(f\"  Integrity:  {d['integrity']}\")
@@ -342,13 +372,18 @@ print(f\"  Before:     {d['size_before_mb']} MB\")
 print(f\"  After:      {d['size_after_mb']} MB\")
 print(f\"  Saved:      {d['saved_kb']} KB\")
 "
-      ;;
-    "Rebuild FTS5 index")
-      gum spin --title "Rebuilding FTS5 index..." -- uv run "$PY_SCRIPT" fts-rebuild > /tmp/ai-db-fts.txt 2>/dev/null
-      local fts_result
-      fts_result=$(cat /tmp/ai-db-fts.txt)
-      rm -f /tmp/ai-db-fts.txt
-      echo "$fts_result" | python3 -c "
+        pause
+        ;;
+      "Rebuild FTS5 index")
+        local fts_file
+        fts_file=$(mktemp)
+        _register_cleanup "$fts_file"
+        gum spin --title "Rebuilding FTS5 index..." -- \
+          env PY="$PY_SCRIPT" OUT="$fts_file" \
+          sh -c 'uv run "$PY" fts-rebuild > "$OUT" 2>/dev/null'
+        local fts_result
+        fts_result=$(cat "$fts_file")
+        echo "$fts_result" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 if d.get('rebuilt'):
@@ -356,55 +391,60 @@ if d.get('rebuilt'):
 else:
     print(f\"  Error: {d.get('error', 'unknown')}\")
 "
-      ;;
-    "Clean orphaned entries")
-      manage_orphans
-      ;;
-    "Check stale files")
-      check_stale
-      ;;
-    *) ;;
-  esac
+        pause
+        ;;
+      "Clean orphaned entries")
+        manage_orphans
+        ;;
+      "Check stale files")
+        check_stale
+        ;;
+      *) break ;;
+    esac
+  done
 }
 
 # ── Helper: analytics menu ───────────────────────────────────────────────────
 
 analytics_menu() {
-  local action
-  action=$(gum choose \
-    --header "Analytics:" \
-    "← Back" \
-    "File type breakdown" \
-    "Top files by chunk count" \
-    "Top chunks by learned utility")
+  while true; do
+    local action
+    action=$(gum choose \
+      --header "Analytics:" \
+      "← Back" \
+      "File type breakdown" \
+      "Top files by chunk count" \
+      "Top chunks by learned utility") || break
 
-  case "$action" in
-    "File type breakdown")
-      echo ""
-      gum style --bold --foreground 39 "File Type Distribution"
-      echo ""
-      show_file_types
-      echo ""
-      gum input --header "Press Enter to continue..." --placeholder "" >/dev/null 2>&1 || true
-      ;;
-    "Top files by chunk count")
-      echo ""
-      gum style --bold --foreground 39 "Top Files by Chunk Count"
-      echo ""
-      uv run "$PY_SCRIPT" top-files
-      echo ""
-      gum input --header "Press Enter to continue..." --placeholder "" >/dev/null 2>&1 || true
-      ;;
-    "Top chunks by learned utility")
-      echo ""
-      gum style --bold --foreground 39 "Top Chunks by Utility (Feedback Learning)"
-      echo ""
-      uv run "$PY_SCRIPT" top-utility
-      echo ""
-      gum input --header "Press Enter to continue..." --placeholder "" >/dev/null 2>&1 || true
-      ;;
-    *) ;;
-  esac
+    case "$action" in
+      "← Back") break ;;
+      "File type breakdown")
+        echo ""
+        gum style --bold --foreground 39 "File Type Distribution"
+        echo ""
+        show_file_types
+        echo ""
+        pause
+        ;;
+      "Top files by chunk count")
+        echo ""
+        gum style --bold --foreground 39 "Top Files by Chunk Count"
+        echo ""
+        uv run "$PY_SCRIPT" top-files
+        echo ""
+        pause
+        ;;
+      "Top chunks by learned utility")
+        echo ""
+        gum style --bold --foreground 39 "Top Chunks by Utility (Feedback Learning)"
+        echo ""
+        uv run "$PY_SCRIPT" top-utility
+        echo ""
+        pause
+        ;;
+      *) break ;;
+    esac
+  done
 }
 
 # ── Main Loop ────────────────────────────────────────────────────────────────

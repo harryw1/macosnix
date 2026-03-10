@@ -89,17 +89,27 @@ fi
 # ── Run RAG pipeline ───────────────────────────────────────────────────────────
 RESULT_FILE=$(mktemp)
 PROGRESS_FILE=$(mktemp)
-_register_cleanup "$RESULT_FILE" "$PROGRESS_FILE"
+ERR_FILE=$(mktemp)
+_register_cleanup "$RESULT_FILE" "$PROGRESS_FILE" "$ERR_FILE"
 
-export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL PROGRESS_FILE
+export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL PROGRESS_FILE ERR_FILE
 
-progress_spinner "$PROGRESS_FILE" "󰚩  Searching and generating with $CHAT_MODEL…" -- \
+progress_spinner "$PROGRESS_FILE" "󰚩  Searching and generating with ${CHAT_MODEL}…" -- \
   sh -c 'OLLAMA_MODEL="$CHAT_MODEL" \
     OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
     uv run "$PY_SCRIPT" --chat "$QUERY" --scope "$SCOPE" \
-      --progress-file "$PROGRESS_FILE" > "$RESULT_FILE" 2>/dev/null'
+      --progress-file "$PROGRESS_FILE" > "$RESULT_FILE" 2>"$ERR_FILE"'
+
+# Surface errors from the RAG pipeline if the result file is empty
+if [ ! -s "$RESULT_FILE" ] && [ -s "$ERR_FILE" ]; then
+  gum log --level error "RAG pipeline failed:"
+  cat "$ERR_FILE" >&2
+fi
 
 # ── Parse result ───────────────────────────────────────────────────────────────
+PARSE_ERR=$(mktemp)
+_register_cleanup "$PARSE_ERR"
+
 ANSWER=$(python3 -c "
 import json, os, sys
 try:
@@ -112,7 +122,11 @@ try:
 except Exception as e:
     print(f'Failed to parse response: {e}', file=sys.stderr)
     sys.exit(1)
-" 2>/dev/null || true)
+" 2>"$PARSE_ERR") || {
+  _parse_err=$(cat "$PARSE_ERR" 2>/dev/null)
+  [ -n "$_parse_err" ] && gum log --level error "$_parse_err"
+  true
+}
 
 if [ -z "$ANSWER" ]; then
   echo " No answer generated."
@@ -166,10 +180,13 @@ esac
 echo ""
 TERM_WIDTH=$(term_width)
 
+# Render markdown (bullets, bold, etc.) before wrapping in a styled box
+FORMATTED_ANSWER=$(printf '%s' "$ANSWER" | gum format)
+
 gum style \
   --width "$TERM_WIDTH" \
   --border rounded --padding "1 2" \
-  "$ANSWER"
+  "$FORMATTED_ANSWER"
 echo ""
 
 # ── Display sources ────────────────────────────────────────────────────────────
@@ -216,7 +233,7 @@ ACTION=$(gum choose \
   --header "What would you like to do?" \
   "󰚩  Ask another question" \
   "󰆏  Copy answer to clipboard" \
-  "  Abort")
+  "  Abort") || { echo "Aborted."; exit 0; }
 
 case "$ACTION" in
 "󰚩  Ask another question")

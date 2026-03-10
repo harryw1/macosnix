@@ -116,7 +116,7 @@ if [ -z "$PR_TEXT" ]; then
   exit 1
 fi
 
-# ── Pipeline post-processing (verify + feedback) ─────────────────────────────
+# Verify PR description accuracy and log for feedback learning
 POST_RESULT=$(pipeline_post "ai-pr" "$COMMITS" "$PR_TEXT")
 
 # ── Parse title / body ─────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ ACTION=$(gum choose \
   "󰆏  Copy to clipboard" \
   "󰏫  Edit then open PR" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort") || { echo "Aborted."; exit 0; }
 
 case "$ACTION" in
 "  Push & open PR with gh")

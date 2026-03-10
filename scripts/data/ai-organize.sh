@@ -172,7 +172,8 @@ $DO_TOP_LEVEL && SCAN_FLAGS="$SCAN_FLAGS --top-level"
 $DO_ALL_FILES && SCAN_FLAGS="$SCAN_FLAGS --all-files"
 
 gum spin --title "Scanning files…" -- \
-  bash -c "uv run \"$PY_SCRIPT\" --scan \"$TARGET_DIR\" $SCAN_FLAGS > \"$SCAN_FILE\""
+  env PY="$PY_SCRIPT" DIR="$TARGET_DIR" FLAGS="$SCAN_FLAGS" OUT="$SCAN_FILE" \
+  bash -c 'uv run "$PY" --scan "$DIR" $FLAGS > "$OUT"'
 
 FILE_COUNT=$(python3 -c "import json; print(len(json.load(open('$SCAN_FILE'))))" 2>/dev/null) || {
   gum style --foreground 196 "  Failed to read scan results."
@@ -209,6 +210,9 @@ ops     = plan.get("operations", [])
 summary = plan.get("summary", "")
 
 # ── Catppuccin Macchiato palette ──────────────────────────────────────────────
+# These ANSI colors match the Catppuccin Macchiato theme used by the gum
+# wrapper (see modules/home-manager/gum.nix).  If you change the gum theme,
+# update these values to match.
 R   = "\033[0m"       # reset
 B   = "\033[1m"       # bold
 D   = "\033[2m"       # dim
@@ -417,7 +421,8 @@ fi
 
 echo ""
 gum spin --title "Applying changes…" -- \
-  bash -c "uv run \"$PY_SCRIPT\" --apply \"$PLAN_FILE\""
+  env PY="$PY_SCRIPT" PLAN="$PLAN_FILE" \
+  bash -c 'uv run "$PY" --apply "$PLAN"'
 
 echo ""
 gum style --bold --border rounded --padding "0 1" "Done!"

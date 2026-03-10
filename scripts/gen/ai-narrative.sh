@@ -58,19 +58,19 @@ if [ -z "$DATA_INPUT" ]; then
   [ -z "$DATA_INPUT" ] && echo "Aborted." && exit 0
 fi
 
-# ── Gather context ─────────────────────────────────────────────────────────────
-OUTPUT_TYPE=$(gum choose \
+# ── Gather context (use env vars if set, e.g. during regenerate) ──────────────
+OUTPUT_TYPE="${_REGEN_OUTPUT_TYPE:-$(gum choose \
   --header "What are you writing?" \
   "Report paragraph" \
   "Executive email" \
   "Slide speaker notes" \
-  "Key findings section")
+  "Key findings section")}"
 
-AUDIENCE=$(gum choose \
+AUDIENCE="${_REGEN_AUDIENCE:-$(gum choose \
   --header "Who is the audience?" \
   "Executive / Leadership" \
   "Technical / Analyst" \
-  "Mixed / General")
+  "Mixed / General")}"
 
 # ── Ensure ollama is running ───────────────────────────────────────────────────
 ensure_ollama
@@ -143,7 +143,7 @@ ACTION=$(gum choose \
   "󰆏  Copy to clipboard" \
   "󰈙  Save to file" \
   "󰑐  Regenerate" \
-  "  Abort")
+  "  Abort") || { echo "Aborted."; exit 0; }
 
 case "$ACTION" in
 "󰆏  Copy to clipboard")
@@ -162,10 +162,11 @@ case "$ACTION" in
   fi
   ;;
 "󰑐  Regenerate")
-  # Save data to a temp file so regenerate doesn't lose interactive input
+  # Save data + choices so regenerate doesn't re-prompt for everything
   _REGEN_FILE=$(mktemp)
   printf '%s' "$DATA_INPUT" > "$_REGEN_FILE"
-  exec bash "${BASH_SOURCE[0]}" "$_REGEN_FILE"
+  _REGEN_OUTPUT_TYPE="$OUTPUT_TYPE" _REGEN_AUDIENCE="$AUDIENCE" \
+    exec bash "${BASH_SOURCE[0]}" "$_REGEN_FILE"
   ;;
 "  Abort")
   echo "Aborted."
