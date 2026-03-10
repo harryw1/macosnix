@@ -13,6 +13,7 @@
 #   ensure_ollama [model]       Start Ollama if needed; optionally verify a model is pulled
 #   clip_copy                   Pipe stdin to the system clipboard (macOS/Linux)
 #   ollama_generate             Build JSON payload, POST to Ollama, print response text
+#   progress_spinner FILE TITLE -- CMD  Stage-aware spinner (reads progress from file)
 #   strip_think_blocks          Remove <think>…</think> from stdin
 #   term_width                  Print usable terminal width (capped at 100)
 #   make_tempfiles VAR1 VAR2…   Create temp files, assign to named variables, register cleanup
@@ -175,6 +176,66 @@ except Exception as e:
   printf '%s' "$response"
 }
 
+# ── Progress spinner (stage-aware) ───────────────────────────────────────────
+
+progress_spinner() {
+  # Run a command in the background while displaying a spinner whose title
+  # updates as stages are written to a progress file.
+  #
+  # Usage: progress_spinner PROGRESS_FILE FALLBACK_TITLE -- COMMAND [ARGS...]
+  #
+  # The subprocess writes one-line stage names to PROGRESS_FILE.  This
+  # function polls that file and updates the spinner text in-place.
+  # When the subprocess exits, the spinner stops.
+  #
+  # If the progress file is never written, FALLBACK_TITLE is shown.
+
+  local progress_file="$1"
+  local fallback_title="$2"
+  shift 2
+  [[ "$1" == "--" ]] && shift  # consume separator
+
+  # Ensure the progress file exists and is empty
+  : > "$progress_file"
+
+  # Run the command in the background
+  "$@" &
+  local bg_pid=$!
+
+  # Spinner frames
+  local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+  local frame_count=${#frames[@]}
+  local i=0
+  local current_title="$fallback_title"
+  local last_line=""
+
+  # Hide cursor
+  printf '\033[?25l' >&2
+
+  # Ensure cursor is restored on exit (even if killed)
+  trap 'printf "\033[?25h" >&2' RETURN
+
+  while kill -0 "$bg_pid" 2>/dev/null; do
+    # Check for stage update
+    if [ -s "$progress_file" ]; then
+      last_line=$(tail -1 "$progress_file" 2>/dev/null || true)
+      [ -n "$last_line" ] && current_title="$last_line"
+    fi
+
+    # Render spinner frame + title
+    printf '\r\033[K%s %s' "${frames[$((i % frame_count))]}" "$current_title" >&2
+    i=$((i + 1))
+    sleep 0.1
+  done
+
+  # Clear the spinner line
+  printf '\r\033[K' >&2
+
+  # Reap the background process and return its exit code
+  wait "$bg_pid" 2>/dev/null
+  return $?
+}
+
 # ── Think-block stripping ────────────────────────────────────────────────────
 
 strip_think_blocks() {
@@ -218,8 +279,24 @@ print(json.dumps({
 }))
 ")
 
-  printf '%s' "$json_payload" | uv run "$post_py" 2>/dev/null || \
-    echo '{"verified":true,"confidence":1.0,"issues":[],"exemplar":null}'
+  # Run post-processing under a spinner so the user sees activity
+  local payload_tmp post_out_tmp
+  payload_tmp=$(mktemp)
+  post_out_tmp=$(mktemp)
+  printf '%s' "$json_payload" > "$payload_tmp"
+
+  gum spin --title "󰚩  Verifying and logging…" -- \
+    sh -c 'uv run "'"$post_py"'" < "'"$payload_tmp"'" > "'"$post_out_tmp"'" 2>/dev/null' || true
+
+  local post_result
+  post_result=$(cat "$post_out_tmp" 2>/dev/null)
+  rm -f "$payload_tmp" "$post_out_tmp"
+
+  if [ -z "$post_result" ]; then
+    post_result='{"verified":true,"confidence":1.0,"issues":[],"exemplar":null}'
+  fi
+
+  printf '%s' "$post_result"
 }
 
 # ── Terminal width ───────────────────────────────────────────────────────────

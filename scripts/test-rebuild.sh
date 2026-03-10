@@ -150,7 +150,7 @@ fi
 
 section "Shared library (common.sh)"
 
-if bash -c "source '$SCRIPT_DIR/lib/common.sh' && type ensure_ollama >/dev/null 2>&1 && type clip_copy >/dev/null 2>&1 && type ollama_generate >/dev/null 2>&1 && type strip_think_blocks >/dev/null 2>&1 && type term_width >/dev/null 2>&1 && type make_tempfiles >/dev/null 2>&1 && type pipeline_post >/dev/null 2>&1"; then
+if bash -c "source '$SCRIPT_DIR/lib/common.sh' && type ensure_ollama >/dev/null 2>&1 && type clip_copy >/dev/null 2>&1 && type ollama_generate >/dev/null 2>&1 && type strip_think_blocks >/dev/null 2>&1 && type progress_spinner >/dev/null 2>&1 && type term_width >/dev/null 2>&1 && type make_tempfiles >/dev/null 2>&1 && type pipeline_post >/dev/null 2>&1"; then
   pass "common.sh sources cleanly, all functions defined"
 else
   fail "common.sh — failed to source or missing functions"

@@ -88,14 +88,16 @@ fi
 
 # ── Run RAG pipeline ───────────────────────────────────────────────────────────
 RESULT_FILE=$(mktemp)
-trap 'rm -f "$RESULT_FILE"' EXIT
+PROGRESS_FILE=$(mktemp)
+trap 'rm -f "$RESULT_FILE" "$PROGRESS_FILE"' EXIT
 
-export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL
+export QUERY SCOPE RESULT_FILE PY_SCRIPT EMBED_MODEL CHAT_MODEL PROGRESS_FILE
 
-gum spin --title "󰚩  Searching and generating with $CHAT_MODEL..." -- \
+progress_spinner "$PROGRESS_FILE" "󰚩  Searching and generating with $CHAT_MODEL…" -- \
   sh -c 'OLLAMA_MODEL="$CHAT_MODEL" \
     OLLAMA_MODEL_EMBED="$EMBED_MODEL" \
-    uv run "$PY_SCRIPT" --chat "$QUERY" --scope "$SCOPE" > "$RESULT_FILE" 2>/dev/null'
+    uv run "$PY_SCRIPT" --chat "$QUERY" --scope "$SCOPE" \
+      --progress-file "$PROGRESS_FILE" > "$RESULT_FILE" 2>/dev/null'
 
 # ── Parse result ───────────────────────────────────────────────────────────────
 ANSWER=$(python3 -c "

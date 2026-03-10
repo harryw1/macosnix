@@ -86,7 +86,18 @@ def build_prompt(
 
 
 # ── Main chat pipeline ─────────────────────────────────────────────────────────
-def chat(query: str, scope: str | None = None) -> None:
+def _emit_stage(progress_file: str | None, stage: str) -> None:
+    """Write a stage name to the progress file so the shell spinner can update."""
+    if progress_file:
+        try:
+            with open(progress_file, "a") as f:
+                f.write(stage + "\n")
+                f.flush()
+        except OSError:
+            pass
+
+
+def chat(query: str, scope: str | None = None, progress_file: str | None = None) -> None:
     conn = open_db()
 
     # ── Config flags ─────────────────────────────────────────────────────
@@ -97,6 +108,7 @@ def chat(query: str, scope: str | None = None) -> None:
     learning_enabled = _cfg("learning", "enabled", True)
 
     # ── Stage 1: Hybrid retrieval ────────────────────────────────────────
+    _emit_stage(progress_file, "󰚩  Stage 1/5 — Retrieving relevant chunks…")
     retrieval_k = rerank_candidates if rerank_enabled else TOP_K
     chunks = retrieve_with_chunks(
         conn, query, top_k=retrieval_k, scope=scope, embed_timeout=30,
@@ -105,6 +117,7 @@ def chat(query: str, scope: str | None = None) -> None:
 
     # ── Stage 2: Thinking-model rerank ───────────────────────────────────
     if rerank_enabled and len(chunks) > TOP_K:
+        _emit_stage(progress_file, "󰚩  Stage 2/5 — Reranking with reasoning model…")
         try:
             from rerank import rerank as llm_rerank
             chunks = llm_rerank(query, chunks, top_k=TOP_K)
@@ -115,6 +128,7 @@ def chat(query: str, scope: str | None = None) -> None:
         chunks = chunks[:TOP_K]
 
     # ── Stage 3: Generation with optional exemplar ───────────────────────
+    _emit_stage(progress_file, "󰚩  Stage 3/5 — Generating answer…")
     exemplar = None
     query_embedding = None
     if learning_enabled:
@@ -140,6 +154,7 @@ def chat(query: str, scope: str | None = None) -> None:
         answer = raw.strip()
 
     # ── Stage 4: Thinking-model verification ─────────────────────────────
+    _emit_stage(progress_file, "󰚩  Stage 4/5 — Verifying answer…")
     grounded = True
     confidence = 1.0
     issues: list[str] = []
@@ -161,6 +176,7 @@ def chat(query: str, scope: str | None = None) -> None:
             pass  # verify module not available — skip
 
     # ── Stage 5: Feedback logging ────────────────────────────────────────
+    _emit_stage(progress_file, "󰚩  Stage 5/5 — Logging feedback…")
     if learning_enabled:
         try:
             from feedback import (
@@ -236,10 +252,14 @@ def main() -> None:
         "--scope", metavar="DIR",
         help="Restrict retrieval to files under this directory (e.g. git root)",
     )
+    parser.add_argument(
+        "--progress-file", metavar="FILE",
+        help="Write stage-progress lines to this file (for spinner updates)",
+    )
     args = parser.parse_args()
 
     if args.chat:
-        chat(args.chat, scope=args.scope)
+        chat(args.chat, scope=args.scope, progress_file=args.progress_file)
     else:
         parser.print_help()
         sys.exit(1)
