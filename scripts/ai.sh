@@ -27,90 +27,91 @@ fi
 
 TOOLS=(
   # ── Git ──
-  "  git-ai-commit    Generate commit messages|git-ai-commit|AI-powered conventional commits from staged changes"
-  "  ai-pr            Generate PR descriptions|ai-pr|Draft a GitHub PR title and body from branch diff"
+  "git-ai-commit    Generate commit messages|git-ai-commit|AI-powered conventional commits from staged changes"
+  "ai-pr            Generate PR descriptions|ai-pr|Draft a GitHub PR title and body from branch diff"
 
   # ── Generate ──
-  "  ai-cmd           Natural language → shell|ai-cmd|Describe what you want, get a shell command"
-  "  ai-explain       Explain commands / errors|ai-explain|Paste a command or error for a plain-English explanation"
-  "  ai-narrative     Data → report prose|ai-narrative|Turn metrics and data into written narrative"
-  "  ai-slide-copy    Data → slide content|ai-slide-copy|Turn metrics and data into slide-ready copy"
+  "ai-cmd           Natural language → shell|ai-cmd|Describe what you want, get a shell command"
+  "ai-explain       Explain commands / errors|ai-explain|Paste a command or error for a plain-English explanation"
+  "ai-narrative     Data → report prose|ai-narrative|Turn metrics and data into written narrative"
+  "ai-slide-copy    Data → slide content|ai-slide-copy|Turn metrics and data into slide-ready copy"
 
   # ── Data ──
-  "  ai-duck          Query data files (DuckDB)|ai-duck|Ask natural-language questions about CSV / Parquet / JSON"
-  "  ai-organize      Reorganize & deduplicate|ai-organize|AI-powered file renaming, grouping, and dedup"
+  "ai-duck          Query data files (DuckDB)|ai-duck|Ask natural-language questions about CSV / Parquet / JSON"
+  "ai-organize      Reorganize & deduplicate|ai-organize|AI-powered file renaming, grouping, and dedup"
 
   # ── Search & Chat ──
-  "  ai-index         Index current directory|ai-index|Quick index / reindex the current directory for search & chat"
-  "  ai-search        Semantic local search|ai-search|Index a directory and search by meaning"
-  "  ai-chat          RAG chat over codebase|ai-chat|Chat with your indexed files using retrieval-augmented generation"
+  "ai-index         Index current directory|ai-index|Quick index / reindex the current directory for search & chat"
+  "ai-search        Semantic local search|ai-search|Index a directory and search by meaning"
+  "ai-chat          RAG chat over codebase|ai-chat|Chat with your indexed files using retrieval-augmented generation"
 
   # ── Database ──
-  "  ai-db            Manage embeddings DB|ai-db|Browse, inspect, vacuum, and maintain the vector database"
+  "ai-db            Manage embeddings DB|ai-db|Browse, inspect, vacuum, and maintain the vector database"
 
   # ── Setup ──
-  "  ai-config        Configure models|ai-config|Pick Ollama models and tune thresholds"
-  "  ollama-pull      Pull required models|ollama-pull|Download all default Ollama models"
-  "  pyinit           Scaffold Python project|pyinit|Interactive Python project scaffolding with uv"
-  "  report-init      Scaffold report project|report-init|Scaffold a research / analysis / report directory"
+  "ai-config        Configure models|ai-config|Pick Ollama models and tune thresholds"
+  "ollama-pull      Pull required models|ollama-pull|Download all default Ollama models"
+  "pyinit           Scaffold Python project|pyinit|Interactive Python project scaffolding with uv"
+  "report-init      Scaffold report project|report-init|Scaffold a research / analysis / report directory"
 )
 
 # ── Direct dispatch (bypass menu) ───────────────────────────────────────────
 if [[ $# -gt 0 ]]; then
-  subcmd="$1"; shift
+  subcmd="$1"
+  shift
 
   # Allow short names like "cmd" → "ai-cmd", "search" → "ai-search", etc.
   case "$subcmd" in
-    commit)    exec git-ai-commit "$@" ;;
-    pr)        exec ai-pr "$@" ;;
-    cmd)       exec ai-cmd "$@" ;;
-    explain)   exec ai-explain "$@" ;;
-    narrative) exec ai-narrative "$@" ;;
-    slides)    exec ai-slide-copy "$@" ;;
-    duck)      exec ai-duck "$@" ;;
-    organize)  exec ai-organize "$@" ;;
-    index)     exec ai-index "$@" ;;
-    search)    exec ai-search "$@" ;;
-    chat)      exec ai-chat "$@" ;;
-    db)        exec ai-db "$@" ;;
-    config)    exec ai-config "$@" ;;
-    pull)      exec ollama-pull "$@" ;;
-    help)
-      echo "ai — unified launcher for the AI CLI suite"
-      echo ""
-      echo "Usage:"
-      echo "  ai                     Interactive tool picker"
-      echo "  ai <tool> [args...]    Run a tool directly"
-      echo ""
-      echo "Short names:"
-      echo "  commit    git-ai-commit      pr        ai-pr"
-      echo "  cmd       ai-cmd             explain   ai-explain"
-      echo "  narrative ai-narrative       slides    ai-slide-copy"
-      echo "  duck      ai-duck            organize  ai-organize"
-      echo "  index     ai-index           search    ai-search"
-      echo "  chat      ai-chat            db        ai-db"
-      echo "  config    ai-config          pull      ollama-pull"
-      echo ""
-      echo "Examples:"
-      echo "  ai cmd 'list large files'    Run ai-cmd directly"
-      echo "  ai index                     Index current directory"
-      echo "  ai index --reindex           Force full reindex"
-      echo "  ai search 'find my aliases'  Semantic search"
-      echo "  ai db --status               Show database stats"
-      exit 0
-      ;;
-    *)
-      # Try as a full command name
-      if command -v "$subcmd" >/dev/null 2>&1; then
-        exec "$subcmd" "$@"
-      elif command -v "ai-$subcmd" >/dev/null 2>&1; then
-        exec "ai-$subcmd" "$@"
-      else
-        echo "Unknown tool: $subcmd" >&2
-        echo "Run 'ai help' for available tools." >&2
-        exit 1
-      fi
-      ;;
+  commit) exec git-ai-commit "$@" ;;
+  pr) exec ai-pr "$@" ;;
+  cmd) exec ai-cmd "$@" ;;
+  explain) exec ai-explain "$@" ;;
+  narrative) exec ai-narrative "$@" ;;
+  slides) exec ai-slide-copy "$@" ;;
+  duck) exec ai-duck "$@" ;;
+  organize) exec ai-organize "$@" ;;
+  index) exec ai-index "$@" ;;
+  search) exec ai-search "$@" ;;
+  chat) exec ai-chat "$@" ;;
+  db) exec ai-db "$@" ;;
+  config) exec ai-config "$@" ;;
+  pull) exec ollama-pull "$@" ;;
+  help)
+    echo "ai — unified launcher for the AI CLI suite"
+    echo ""
+    echo "Usage:"
+    echo "  ai                     Interactive tool picker"
+    echo "  ai <tool> [args...]    Run a tool directly"
+    echo ""
+    echo "Short names:"
+    echo "  commit    git-ai-commit      pr        ai-pr"
+    echo "  cmd       ai-cmd             explain   ai-explain"
+    echo "  narrative ai-narrative       slides    ai-slide-copy"
+    echo "  duck      ai-duck            organize  ai-organize"
+    echo "  index     ai-index           search    ai-search"
+    echo "  chat      ai-chat            db        ai-db"
+    echo "  config    ai-config          pull      ollama-pull"
+    echo ""
+    echo "Examples:"
+    echo "  ai cmd 'list large files'    Run ai-cmd directly"
+    echo "  ai index                     Index current directory"
+    echo "  ai index --reindex           Force full reindex"
+    echo "  ai search 'find my aliases'  Semantic search"
+    echo "  ai db --status               Show database stats"
+    exit 0
+    ;;
+  *)
+    # Try as a full command name
+    if command -v "$subcmd" >/dev/null 2>&1; then
+      exec "$subcmd" "$@"
+    elif command -v "ai-$subcmd" >/dev/null 2>&1; then
+      exec "ai-$subcmd" "$@"
+    else
+      echo "Unknown tool: $subcmd" >&2
+      echo "Run 'ai help' for available tools." >&2
+      exit 1
+    fi
+    ;;
   esac
 fi
 
@@ -159,104 +160,104 @@ echo ""
 # Dispatch — each tool gets the right launch behaviour
 case "$cmd" in
 
-  # ── Self-contained TUIs (work with no args) ──────────────────────────────
-  ai-db|ai-config|ai-chat|ai-index)
-    exec "$cmd"
+# ── Self-contained TUIs (work with no args) ──────────────────────────────
+ai-db | ai-config | ai-chat | ai-index)
+  exec "$cmd"
+  ;;
+
+# ── Tools that read git state (no input needed) ─────────────────────────
+git-ai-commit)
+  exec git-ai-commit
+  ;;
+
+ai-pr)
+  exec ai-pr
+  ;;
+
+# ── Search: offer index-or-query submenu ─────────────────────────────────
+ai-search)
+  action=$(gum choose \
+    --header "ai-search:" \
+    --cursor "▸ " \
+    "Search (query your indexed files)" \
+    "Index a directory" \
+    "Show index status") || exit 0
+
+  case "$action" in
+  "Search"*)
+    query=$(gum input \
+      --header "Semantic search query:" \
+      --placeholder "e.g., where are my zsh aliases defined?" \
+      --width 80) || exit 0
+    [[ -z "$query" ]] && exit 0
+    exec ai-search "$query"
     ;;
-
-  # ── Tools that read git state (no input needed) ─────────────────────────
-  git-ai-commit)
-    exec git-ai-commit
-    ;;
-
-  ai-pr)
-    exec ai-pr
-    ;;
-
-  # ── Search: offer index-or-query submenu ─────────────────────────────────
-  ai-search)
-    action=$(gum choose \
-      --header "ai-search:" \
-      --cursor "▸ " \
-      "Search (query your indexed files)" \
-      "Index a directory" \
-      "Show index status") || exit 0
-
-    case "$action" in
-      "Search"*)
-        query=$(gum input \
-          --header "Semantic search query:" \
-          --placeholder "e.g., where are my zsh aliases defined?" \
-          --width 80) || exit 0
-        [[ -z "$query" ]] && exit 0
-        exec ai-search "$query"
-        ;;
-      "Index"*)
-        dir=$(gum file --directory --height 10) || exit 0
-        [[ -z "$dir" ]] && exit 0
-        exec ai-search --index "$dir"
-        ;;
-      "Show"*)
-        exec ai-search --status
-        ;;
-    esac
-    ;;
-
-  # ── Organize: needs a target directory ───────────────────────────────────
-  ai-organize)
+  "Index"*)
     dir=$(gum file --directory --height 10) || exit 0
     [[ -z "$dir" ]] && exit 0
-    exec ai-organize "$dir"
+    exec ai-search --index "$dir"
     ;;
+  "Show"*)
+    exec ai-search --status
+    ;;
+  esac
+  ;;
 
-  # ── Single-line input tools ──────────────────────────────────────────────
-  ai-cmd)
-    input=$(gum input \
-      --header "Describe the command you need:" \
-      --placeholder "e.g., find files larger than 100MB" \
-      --width 80) || exit 0
-    [[ -z "$input" ]] && exit 0
-    exec ai-cmd "$input"
-    ;;
+# ── Organize: needs a target directory ───────────────────────────────────
+ai-organize)
+  dir=$(gum file --directory --height 10) || exit 0
+  [[ -z "$dir" ]] && exit 0
+  exec ai-organize "$dir"
+  ;;
 
-  ai-explain)
-    input=$(gum input \
-      --header "Paste a command or error to explain:" \
-      --placeholder "e.g., tar -xzf archive.tar.gz" \
-      --width 80) || exit 0
-    [[ -z "$input" ]] && exit 0
-    exec ai-explain "$input"
-    ;;
+# ── Single-line input tools ──────────────────────────────────────────────
+ai-cmd)
+  input=$(gum input \
+    --header "Describe the command you need:" \
+    --placeholder "e.g., find files larger than 100MB" \
+    --width 80) || exit 0
+  [[ -z "$input" ]] && exit 0
+  exec ai-cmd "$input"
+  ;;
 
-  # ── Multi-line input tools (pipe stdin) ──────────────────────────────────
-  ai-narrative|ai-slide-copy)
-    input=$(gum write \
-      --header "Paste data or metrics (Ctrl+D to finish):" \
-      --placeholder "Paste CSV, bullet points, or raw numbers..." \
-      --width 80 \
-      --height 10) || exit 0
-    [[ -z "$input" ]] && exit 0
-    echo "$input" | "$cmd"
-    ;;
+ai-explain)
+  input=$(gum input \
+    --header "Paste a command or error to explain:" \
+    --placeholder "e.g., tar -xzf archive.tar.gz" \
+    --width 80) || exit 0
+  [[ -z "$input" ]] && exit 0
+  exec ai-explain "$input"
+  ;;
 
-  # ── Duck: needs a file and a question ────────────────────────────────────
-  ai-duck)
-    file=$(gum file --height 10) || exit 0
-    [[ -z "$file" ]] && exit 0
-    question=$(gum input \
-      --header "Question about $(basename "$file"):" \
-      --placeholder "e.g., what are the top 10 rows by revenue?" \
-      --width 80) || exit 0
-    [[ -z "$question" ]] && exit 0
-    exec ai-duck "$file" "$question"
-    ;;
+# ── Multi-line input tools (pipe stdin) ──────────────────────────────────
+ai-narrative | ai-slide-copy)
+  input=$(gum write \
+    --header "Paste data or metrics (Ctrl+D to finish):" \
+    --placeholder "Paste CSV, bullet points, or raw numbers..." \
+    --width 80 \
+    --height 10) || exit 0
+  [[ -z "$input" ]] && exit 0
+  echo "$input" | "$cmd"
+  ;;
 
-  # ── Simple launchers (own interactive flow) ──────────────────────────────
-  ollama-pull|pyinit|report-init)
-    exec "$cmd"
-    ;;
+# ── Duck: needs a file and a question ────────────────────────────────────
+ai-duck)
+  file=$(gum file --height 10) || exit 0
+  [[ -z "$file" ]] && exit 0
+  question=$(gum input \
+    --header "Question about $(basename "$file"):" \
+    --placeholder "e.g., what are the top 10 rows by revenue?" \
+    --width 80) || exit 0
+  [[ -z "$question" ]] && exit 0
+  exec ai-duck "$file" "$question"
+  ;;
 
-  *)
-    exec "$cmd"
-    ;;
+# ── Simple launchers (own interactive flow) ──────────────────────────────
+ollama-pull | pyinit | report-init)
+  exec "$cmd"
+  ;;
+
+*)
+  exec "$cmd"
+  ;;
 esac
