@@ -25,15 +25,3 @@ zstyle ':fzf-tab:*' switch-group ',' '.'
 
 # Create a directory and immediately enter it
 mkcd() { mkdir -p "$1" && cd "$1" }
-
-# Auto-activate Python virtual environment when entering a project directory.
-# Works with uv's default .venv layout — no .envrc required.
-auto_activate_venv() {
-  if [[ -f ".venv/bin/activate" ]]; then
-    source .venv/bin/activate
-  elif [[ -n "$VIRTUAL_ENV" && ! -f ".venv/bin/activate" ]]; then
-    deactivate
-  fi
-}
-add-zsh-hook chpwd auto_activate_venv
-auto_activate_venv  # also run on shell startup for the initial directory
