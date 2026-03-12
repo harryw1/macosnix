@@ -23,5 +23,8 @@ zstyle ':fzf-tab:*' switch-group ',' '.'
 
 # Custom zsh initialization
 
+# Fix just completions: show usage signature instead of full recipe source
+functions[_just]="${functions[_just]//just --show \$recipe/just --usage \$recipe}"
+
 # Create a directory and immediately enter it
 mkcd() { mkdir -p "$1" && cd "$1" }
