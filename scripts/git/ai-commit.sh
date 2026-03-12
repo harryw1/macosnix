@@ -50,7 +50,7 @@ make_tempfiles PROMPT_FILE
 printf '%s\n' \
   "You write conventional git commit messages. Given the git status and diff" \
   "below, output ONLY a single commit message — no preamble, no explanation," \
-  "no markdown, no code fences." \
+  "no markdown, no code fences, no bullet points, no headers." \
   "" \
   "Format: <type>(<optional scope>): <summary>" \
   "<blank line>" \
@@ -60,6 +60,20 @@ printf '%s\n' \
   "- Types: feat, fix, chore, docs, refactor, style, test, perf, ci, build" \
   "- Summary <= 72 chars, imperative mood (add / fix / update), no trailing period" \
   "- Omit body unless it adds real value" \
+  "- Your ENTIRE response must be ONLY the commit message, nothing else" \
+  "" \
+  "Example input: renamed utils.py to helpers.py, updated imports" \
+  "Example output:" \
+  "refactor: rename utils module to helpers" \
+  "" \
+  "Example input: added retry logic to API client, new max_retries config option" \
+  "Example output:" \
+  "feat(api): add retry logic to API client" \
+  "" \
+  "Add configurable max_retries with exponential backoff" \
+  "for transient HTTP failures." \
+  "" \
+  "Now generate a commit message for the following changes:" \
   "" \
   "--- git status ---" \
   "$STATUS" \
@@ -71,28 +85,52 @@ printf '%s\n' \
 # ── Call ollama REST API ───────────────────────────────────────────────────────
 # temperature 0.2: low creativity for consistent conventional commits
 # num_predict 200: commit messages are short; num_ctx 4096: room for diff context
-RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
-  --temperature 0.2 --num_predict 200 --num_ctx 4096 \
-  --spinner "󰚩  Generating commit message with $MODEL...")
 
-# Parse response; fall back to awk anchor on commit type if model ignored think:false
-COMMIT_MSG=$(printf '%s' "$RAW" |
-  strip_think_blocks |
-  awk '
-      !found && /^(feat|fix|chore|docs|refactor|style|test|perf|ci|build)(\([^)]*\))?!?:/ { found=1 }
-      found            { print }
-    ' |
-  head -20 |
-  sed '/^[[:space:]]*$/d' |
-  sed 's/^[[:space:]]*//')
+_extract_commit_msg() {
+  # Extract a valid conventional commit message from raw model output.
+  # Returns 0 if a valid message was found, 1 otherwise.
+  local raw="$1"
+  local msg
+  msg=$(printf '%s' "$raw" |
+    strip_think_blocks |
+    awk '
+        !found && /^(feat|fix|chore|docs|refactor|style|test|perf|ci|build)(\([^)]*\))?!?:/ { found=1 }
+        found            { print }
+      ' |
+    head -20 |
+    sed '/^[[:space:]]*$/d' |
+    sed 's/^[[:space:]]*//')
 
-# If anchor didn't match (model returned clean output), use the whole response
+  if [ -z "$msg" ]; then
+    return 1
+  fi
+  printf '%s' "$msg"
+}
+
+COMMIT_MSG=""
+for _attempt in 1 2; do
+  if [ "$_attempt" -eq 2 ]; then
+    gum log --level warn "Model returned a bad response — retrying…"
+  fi
+
+  RAW=$(ollama_generate "$PROMPT_FILE" "$MODEL" \
+    --temperature 0.2 --num_predict 200 --num_ctx 4096 \
+    --spinner "󰚩  Generating commit message with $MODEL...")
+
+  if [ -z "$RAW" ]; then
+    continue
+  fi
+
+  COMMIT_MSG=$(_extract_commit_msg "$RAW") && break
+done
+
 if [ -z "$COMMIT_MSG" ]; then
-  COMMIT_MSG=$(printf '%s' "$RAW" | strip_think_blocks | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//')
-fi
-
-if [ -z "$COMMIT_MSG" ]; then
-  echo " No message generated. Is '$MODEL' pulled? Run: ollama pull $MODEL"
+  echo ""
+  gum log --level error "Could not generate a valid conventional commit message after 2 attempts."
+  gum log --level info "The model may need updating. Try: ollama pull $MODEL"
+  echo ""
+  gum style --foreground 245 --italic "  Raw model output (last attempt):"
+  printf '%s\n' "$RAW" | strip_think_blocks | head -10
   exit 1
 fi
 
