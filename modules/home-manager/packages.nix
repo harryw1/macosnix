@@ -15,6 +15,7 @@
     lazygit      # TUI git client
 
     # Development
+    bun          # JavaScript runtime & toolkit
     neovim       # text editor
     gh           # GitHub CLI
     cmake

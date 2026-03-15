@@ -486,6 +486,14 @@ README
   # The Python script lives next to this file; uv resolves its inline deps on
   # first run (cached thereafter under ~/.cache/uv).
   mdconvert = pkgs.writeShellScriptBin "mdconvert" ''
+    export DYLD_FALLBACK_LIBRARY_PATH="${pkgs.lib.makeLibraryPath [
+      pkgs.glib
+      pkgs.pango
+      pkgs.harfbuzz
+      pkgs.fontconfig
+      pkgs.fribidi
+    ]}''${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+    export FONTCONFIG_FILE="${pkgs.fontconfig.out}/etc/fonts/fonts.conf"
     exec ${pkgs.uv}/bin/uv run "${./mdconvert.py}" "$@"
   '';
 
