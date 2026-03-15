@@ -21,6 +21,9 @@ zstyle ':fzf-tab:complete:kill:argument-rest' fzf-preview '[[ $group == "[proces
 # switch group using `<` and `>`
 zstyle ':fzf-tab:*' switch-group ',' '.'
 
+# direnv: auto-activate project environments (.venv, nix devShells)
+eval "$(direnv hook zsh)"
+
 # Custom zsh initialization
 
 # Fix just completions: show usage signature instead of full recipe source

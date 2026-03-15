@@ -21,6 +21,9 @@
     cmake
     duckdb
     uv           # Modern Python toolchain manager
+    ty           # Astral's Rust-based Python type checker
+    direnv       # Per-directory environment auto-activation
+    nix-direnv   # Nix-aware direnv integration
     just         # Task runner (project-level Makefile alternative)
     watchexec    # File watcher for re-running commands on change
 

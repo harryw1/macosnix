@@ -73,14 +73,15 @@ let
     esac
 
     # 5. Add standard dev dependencies
-    $GUM spin --title "Adding core dev tools (ruff, pyright, pytest, pytest-cov, pre-commit)..." -- $UV add --dev ruff pyright pytest pytest-cov pre-commit
+    $GUM spin --title "Adding core dev tools (ruff, pyright, pytest, pytest-xdist, pytest-cov, deptry, pre-commit)..." -- $UV add --dev ruff pyright pytest pytest-xdist pytest-cov deptry pre-commit
 
     if [[ "$TEMPLATE" == *"Research"* ]]; then
       $GUM spin --title "Adding research tools (marimo)..." -- $UV add marimo
     fi
 
-    # 5.5 Prepare the virtual environment
+    # 5.5 Prepare the virtual environment and pin Python version
     $GUM spin --title "Syncing dependencies and preparing .venv..." -- $UV sync
+    $GUM spin --title "Pinning Python version (.python-version)..." -- $UV python pin
 
     # 6. Create robust .gitignore
     cat <<EOF > .gitignore
@@ -89,6 +90,7 @@ __pycache__/
 .venv/
 .env
 .DS_Store
+.direnv/
 dist/
 build/
 *.egg-info/
@@ -96,6 +98,11 @@ build/
 .marimo/
 .pytest_cache/
 .ruff_cache/
+EOF
+
+    # 6b. Generate .envrc for direnv + uv venv auto-activation
+    cat <<EOF > .envrc
+layout uv
 EOF
 
     # 7. Auto-populate README.md
@@ -152,9 +159,13 @@ select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "PTH", "RUF"]
 include = $PYRIGHT_INCLUDE
 typeCheckingMode = "standard"
 
+[tool.ty]
+src = $PYRIGHT_INCLUDE
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "-n auto"
 
 [tool.coverage.run]
 source = ["src"]
@@ -163,6 +174,8 @@ omit = ["tests/*"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+
+[tool.deptry]
 EOF
 
     # 8b. For library projects, scaffold src module, data, and tests
@@ -301,17 +314,18 @@ all: fmt lint typecheck test
 fmt:
     uv run ruff format .
 
-# Lint and auto-fix
+# Lint and auto-fix (ruff + dependency hygiene)
 lint:
     uv run ruff check --fix .
+    uv run deptry .
 
 # Type-check
 typecheck:
     uv run pyright
 
-# Run tests
+# Run tests (parallel via pytest-xdist)
 test:
-    uv run pytest || { code=\$?; [ \$code -eq 5 ] && echo "No tests found — write some tests!" && exit 0; exit \$code; }
+    uv run pytest -n auto || { code=\$?; [ \$code -eq 5 ] && echo "No tests found — write some tests!" && exit 0; exit \$code; }
 
 # Run tests with coverage report
 cov:

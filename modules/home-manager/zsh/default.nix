@@ -72,7 +72,7 @@ in
       uvr   = "uv run";
       rff   = "ruff format";
       rfc   = "ruff check --fix";
-      ty    = "uvx pyright";  # Astral-style type checking interface
+      # ty is now installed directly (pkgs.ty) — no alias needed
       nb    = "uvx marimo edit";  # Start marimo notebook editor (via uvx)
       ipy   = "uvx ipython";  # Enhanced interactive Python REPL (via uvx)
       j     = "just";          # Shorthand for justfile tasks
