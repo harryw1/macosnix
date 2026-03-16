@@ -70,7 +70,7 @@
       "microsoft-office"
       "microsoft-teams"
       "obsidian"
-      "ollama"
+      "ollama-app"
       "pixelsnap"
       "raycast"
       "steam"
