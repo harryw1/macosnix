@@ -402,15 +402,27 @@ def cmd_top_utility() -> None:
     conn = _open_db()
     cur = conn.cursor()
 
+    # Batch fetch metadata to avoid N+1 query overhead
+    row_ids = [r[0] for r in rows]
+    if not row_ids:
+        conn.close()
+        return
+
+    placeholders = ",".join(["?"] * len(row_ids))
+    cur.execute(
+        f"SELECT rowid, filepath, snippet FROM file_metadata WHERE rowid IN ({placeholders})",
+        row_ids
+    )
+    metadata_map = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+
     for rid, ema, last_used in rows:
         age_days = (now - last_used) / 86400
         decay = 0.5 ** (age_days / decay_halflife) if decay_halflife > 0 else 1.0
         decayed = 0.5 + (ema - 0.5) * decay
 
-        cur.execute("SELECT filepath, snippet FROM file_metadata WHERE rowid = ?", (rid,))
-        result = cur.fetchone()
-        fp = result[0] if result else "?"
-        snippet = (result[1][:80] if result else "?")
+        meta = metadata_map.get(rid)
+        fp = meta[0] if meta else "?"
+        snippet = (meta[1][:80] if meta else "?")
 
         print(f"  [{decayed:.3f}]  rowid={rid}  {fp}")
         print(f"           {snippet}")
